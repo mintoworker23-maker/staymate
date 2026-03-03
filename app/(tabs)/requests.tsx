@@ -7,11 +7,30 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BottomNavigation } from '@/components/bottom-navigation';
 import { ExpandingSearch } from '@/components/expanding-search';
 import { useMatchFeedStore } from '@/context/match-feed-store';
-import { matchPeople, type MatchPerson } from '@/data/people';
 
-const seedPeople: MatchPerson[] = matchPeople;
+type RequestPerson = {
+  id: string;
+  name: string;
+  age: number;
+  role: string;
+  score: number;
+  image: ReturnType<typeof require>;
+};
 
-function MatchCard({ person, onPress }: { person: MatchPerson; onPress: () => void }) {
+const requestPeople: RequestPerson[] = [
+  { id: '1', name: 'Teddy Omondi', age: 21, role: 'Bedsitter', score: 94, image: require('@/assets/images/image.png') },
+  { id: '2', name: 'Akinyi Moraa', age: 23, role: 'Studio', score: 91, image: require('@/assets/images/home-profile.png') },
+  { id: '3', name: 'Mark Otieno', age: 24, role: 'One Bedroom', score: 88, image: require('@/assets/images/image.png') },
+  { id: '4', name: 'Njeri Maina', age: 22, role: 'Bedsitter', score: 93, image: require('@/assets/images/home-profile.png') },
+  { id: '5', name: 'Kelvin Ouma', age: 25, role: 'Studio', score: 90, image: require('@/assets/images/image.png') },
+  { id: '6', name: 'Anne Wanjiru', age: 20, role: 'Bedsitter', score: 92, image: require('@/assets/images/home-profile.png') },
+  { id: '7', name: 'Brian Ochieng', age: 26, role: 'One Bedroom', score: 89, image: require('@/assets/images/image.png') },
+  { id: '8', name: 'Faith Anyango', age: 22, role: 'Studio', score: 95, image: require('@/assets/images/home-profile.png') },
+  { id: '9', name: 'Kevin Mutiso', age: 24, role: 'Bedsitter', score: 87, image: require('@/assets/images/image.png') },
+  { id: '10', name: 'Mercy Achieng', age: 23, role: 'One Bedroom', score: 94, image: require('@/assets/images/home-profile.png') },
+];
+
+function RequestCard({ person, onPress }: { person: RequestPerson; onPress: () => void }) {
   return (
     <Pressable style={styles.cardWrap} onPress={onPress}>
       <View style={styles.cardImageWrap}>
@@ -27,72 +46,33 @@ function MatchCard({ person, onPress }: { person: MatchPerson; onPress: () => vo
   );
 }
 
-export default function MatchExploreScreen() {
+export default function RequestsScreen() {
   const router = useRouter();
-  const { rejectedPersonIds } = useMatchFeedStore();
-  const [people, setPeople] = React.useState<MatchPerson[]>(seedPeople);
-  const [isReloading, setIsReloading] = React.useState(false);
+  const { rejectedPersonIds, matchedPersonIds } = useMatchFeedStore();
   const [searchQuery, setSearchQuery] = React.useState('');
-  const reloadTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const filteredPeople = React.useMemo(() => {
     const rejectedIds = new Set(rejectedPersonIds);
-    const availablePeople = people.filter((person) => !rejectedIds.has(person.id));
+    const matchedIds = new Set(matchedPersonIds);
+    const availablePeople = requestPeople.filter(
+      (person) => !rejectedIds.has(person.id) && !matchedIds.has(person.id)
+    );
     const query = searchQuery.trim().toLowerCase();
     if (!query) return availablePeople;
 
     return availablePeople.filter((person) => {
       return person.name.toLowerCase().includes(query) || person.role.toLowerCase().includes(query);
     });
-  }, [people, rejectedPersonIds, searchQuery]);
-
-  const randomizePeople = React.useCallback(() => {
-    const shuffled = [...seedPeople]
-      .map((person) => ({
-        ...person,
-        score: Math.floor(Math.random() * 10) + 86,
-      }))
-      .sort(() => Math.random() - 0.5);
-
-    setPeople(shuffled);
-  }, []);
-
-  const handleReload = React.useCallback(() => {
-    if (isReloading) return;
-
-    setIsReloading(true);
-    reloadTimerRef.current = setTimeout(() => {
-      randomizePeople();
-      setIsReloading(false);
-    }, 550);
-  }, [isReloading, randomizePeople]);
-
-  React.useEffect(() => {
-    return () => {
-      if (reloadTimerRef.current) {
-        clearTimeout(reloadTimerRef.current);
-      }
-    };
-  }, []);
+  }, [matchedPersonIds, rejectedPersonIds, searchQuery]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.topRow}>
-        <View style={styles.topLeftGroup}>
-          <Pressable onPress={handleReload} style={styles.refreshButton}>
-            <MaterialCommunityIcons
-              name={isReloading ? 'loading' : 'refresh'}
-              size={28}
-              color="#1F1537"
-            />
-          </Pressable>
-          <Text style={styles.topTitle}>Roomates to Match</Text>
-        </View>
-
+        <Text style={styles.topTitle}>Match requests</Text>
         <ExpandingSearch
           value={searchQuery}
           onChangeText={setSearchQuery}
-          placeholder="Search roommates..."
+          placeholder="Search requests..."
           expandedWidth={220}
         />
       </View>
@@ -103,37 +83,35 @@ export default function MatchExploreScreen() {
         data={filteredPeople}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <MatchCard
+          <RequestCard
             person={item}
             onPress={() =>
               router.push({
                 pathname: '/person/[id]',
-                params: { id: item.id, source: 'explore' },
+                params: { id: item.id, source: 'requests' },
               })
             }
           />
         )}
         numColumns={2}
-        refreshing={isReloading}
-        onRefresh={handleReload}
         columnWrapperStyle={styles.rowGap}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
-        ListEmptyComponent={<Text style={styles.emptyText}>No roommates found.</Text>}
+        ListEmptyComponent={<Text style={styles.emptyText}>No match requests found.</Text>}
       />
 
       <BottomNavigation
         style={styles.navigation}
-        activeIndex={1}
+        activeIndex={3}
         onChange={(index) => {
           if (index === 0) {
             router.push('/');
           }
+          if (index === 1) {
+            router.push('/explore');
+          }
           if (index === 2) {
             router.push('/chat');
-          }
-          if (index === 3) {
-            router.push('/requests');
           }
         }}
         items={[
@@ -159,26 +137,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  topLeftGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    flex: 1,
-    marginRight: 8,
-  },
-  refreshButton: {
-    width: 62,
-    height: 62,
-    borderRadius: 31,
-    backgroundColor: '#D5FF78',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   topTitle: {
     color: '#FFFFFF',
     fontSize: 20,
     fontFamily: 'Prompt-SemiBold',
-    flexShrink: 1,
   },
   countText: {
     color: '#FFFFFF',
