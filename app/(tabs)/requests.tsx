@@ -105,7 +105,7 @@ export default function RequestsScreen() {
         activeIndex={3}
         onChange={(index) => {
           if (index === 0) {
-            router.push('/');
+            router.push('/home');
           }
           if (index === 1) {
             router.push('/explore');

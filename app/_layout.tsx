@@ -59,6 +59,15 @@ export default function RootLayout() {
                 animationTypeForReplace: 'push',
                 fullScreenGestureEnabled: true,
               }}>
+              <Stack.Screen name="index" options={{ headerShown: false }} />
+              <Stack.Screen name="start" options={{ headerShown: false }} />
+              <Stack.Screen name="university-login" options={{ headerShown: false }} />
+              <Stack.Screen name="university-code" options={{ headerShown: false }} />
+              <Stack.Screen name="question-basic-info" options={{ headerShown: false }} />
+              <Stack.Screen name="question-preferences" options={{ headerShown: false }} />
+              <Stack.Screen name="question-personality" options={{ headerShown: false }} />
+              <Stack.Screen name="question-interests" options={{ headerShown: false }} />
+              <Stack.Screen name="question-ready" options={{ headerShown: false }} />
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
               <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
               <Stack.Screen name="profile" options={{ headerShown: false }} />

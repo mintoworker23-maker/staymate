@@ -18,6 +18,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BrandedPromptModal } from '@/components/branded-prompt-modal';
+
 type ContactRow = {
   id: string;
   label: string;
@@ -25,10 +27,11 @@ type ContactRow = {
 };
 
 const initialContactRows: ContactRow[] = [
-  { id: 'phone-1', label: 'Phone number', value: '+254769107256' },
+  { id: 'full-name', label: 'Full name', value: 'Teddy Omondi' },
+  { id: 'age', label: 'Age', value: '21' },
+  { id: 'phone', label: 'Phone number', value: '+254769107256' },
+  { id: 'whatsapp', label: 'WhatsApp number', value: '+254769107256' },
   { id: 'email', label: 'Email address', value: 'basicbciso@g...' },
-  { id: 'phone-2', label: 'Phone number', value: '+254769107256' },
-  { id: 'phone-3', label: 'Phone number', value: '+254769107256' },
 ];
 
 export default function ProfileScreen() {
@@ -44,6 +47,7 @@ export default function ProfileScreen() {
     null,
   ]);
   const [editorVisible, setEditorVisible] = React.useState(false);
+  const [logoutPromptVisible, setLogoutPromptVisible] = React.useState(false);
   const [editingRowId, setEditingRowId] = React.useState<string | null>(null);
   const [editingValue, setEditingValue] = React.useState('');
 
@@ -82,6 +86,20 @@ export default function ProfileScreen() {
     () => contactRows.find((row) => row.id === editingRowId) ?? null,
     [contactRows, editingRowId]
   );
+  const profileName = React.useMemo(
+    () => contactRows.find((row) => row.id === 'full-name')?.value ?? 'Your name',
+    [contactRows]
+  );
+  const profileAge = React.useMemo(
+    () => contactRows.find((row) => row.id === 'age')?.value ?? '',
+    [contactRows]
+  );
+  const editorKeyboardType = React.useMemo(() => {
+    if (editingRowId === 'age') return 'number-pad' as const;
+    if (editingRowId === 'phone' || editingRowId === 'whatsapp') return 'phone-pad' as const;
+    if (editingRowId === 'email') return 'email-address' as const;
+    return 'default' as const;
+  }, [editingRowId]);
 
   const openEditor = (row: ContactRow) => {
     setEditingRowId(row.id);
@@ -125,6 +143,14 @@ export default function ProfileScreen() {
     setProfileAvatar({ uri: selected.uri });
   }, []);
 
+  const handleLogout = React.useCallback(() => {
+    setLogoutPromptVisible(true);
+  }, []);
+
+  const confirmLogout = React.useCallback(() => {
+    router.replace('/start');
+  }, [router]);
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.contentContainer}>
@@ -142,10 +168,12 @@ export default function ProfileScreen() {
             </Pressable>
           </View>
 
-          <Text style={styles.userName}>Teddy, 21</Text>
+          <Text style={styles.userName}>
+            {profileAge ? `${profileName}, ${profileAge}` : profileName}
+          </Text>
 
-          <Pressable style={styles.editProfileButton}>
-            <Text style={styles.editProfileText}>Edit profile</Text>
+          <Pressable style={styles.logoutButton} onPress={handleLogout}>
+            <Text style={styles.logoutButtonText}>Log out</Text>
           </Pressable>
         </View>
 
@@ -189,6 +217,20 @@ export default function ProfileScreen() {
         </View>
       </ScrollView>
 
+      <BrandedPromptModal
+        visible={logoutPromptVisible}
+        title="Log out of StayMate?"
+        description="You will be returned to the start screen."
+        actions={[
+          {
+            label: 'Log out',
+            tone: 'destructive',
+            onPress: confirmLogout,
+          },
+        ]}
+        onClose={() => setLogoutPromptVisible(false)}
+      />
+
       <Modal transparent visible={editorVisible} animationType="fade" onRequestClose={closeEditor}>
         <View style={styles.editorOverlay}>
           <KeyboardAvoidingView
@@ -208,8 +250,9 @@ export default function ProfileScreen() {
                   onChangeText={setEditingValue}
                   placeholder="Enter value"
                   placeholderTextColor="#CBBDF0"
+                  keyboardType={editorKeyboardType}
                   style={styles.editorInput}
-                  autoCapitalize="none"
+                  autoCapitalize={editingRowId === 'full-name' ? 'words' : 'none'}
                   autoCorrect={false}
                 />
               </View>
@@ -277,17 +320,17 @@ const styles = StyleSheet.create({
     fontSize: 36,
     fontFamily: 'Prompt-Bold',
   },
-  editProfileButton: {
+  logoutButton: {
     marginTop: 10,
     width: 220,
     height: 52,
     borderRadius: 26,
-    backgroundColor: '#A787E5',
+    backgroundColor: '#D84C74',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  editProfileText: {
-    color: '#1A1433',
+  logoutButtonText: {
+    color: '#FFFFFF',
     fontSize: 18,
     fontFamily: 'Prompt-SemiBold',
   },

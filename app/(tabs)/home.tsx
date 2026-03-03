@@ -29,7 +29,7 @@ const fallbackPhotos: ImageSourcePropType[] = [
   require('@/assets/images/home-profile.png'),
   require('@/assets/images/IMG_0001_1 1.png'),
   require('@/assets/images/icon.png'),
-  require('@/assets/images/splash-icon.png'),
+  require('@/assets/images/grafiti.png'),
 ];
 
 function shuffleArray<T>(items: T[]) {

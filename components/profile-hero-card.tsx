@@ -1,5 +1,7 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
 import {
   Animated,
   Easing,
@@ -53,6 +55,8 @@ export function ProfileHeroCard({ profiles, style, onDecision }: ProfileHeroCard
   const [currentProfileIndex, setCurrentProfileIndex] = useState(0);
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [photoProgress, setPhotoProgress] = useState(0);
+  // FIX: Use a single unified pause state. isHoldPaused is now tracked via ref
+  // so the pan responder never accidentally clears it via setState timing issues.
   const [isHoldPaused, setIsHoldPaused] = useState(false);
   const [isManualPaused, setIsManualPaused] = useState(false);
   const [isAnimatingOut, setIsAnimatingOut] = useState(false);
@@ -60,8 +64,15 @@ export function ProfileHeroCard({ profiles, style, onDecision }: ProfileHeroCard
 
   const cardTranslateX = useRef(new Animated.Value(0)).current;
   const holdLayoutProgress = useRef(new Animated.Value(0)).current;
+
+  // FIX: Track swiping and hold state purely via refs to avoid async setState races
   const isSwipingRef = useRef(false);
-  const controlPressActiveRef = useRef(false);
+  const isHoldPausedRef = useRef(false);
+  // FIX: Replaced the fragile controlPressActive system with a simple flag
+  // that is set synchronously and prevents the pan responder from stealing touches
+  // from the action buttons.
+  const actionButtonActiveRef = useRef(false);
+
   const isPaused = isHoldPaused || isManualPaused;
 
   const safeProfiles = profiles.length > 0 ? profiles : [];
@@ -83,6 +94,7 @@ export function ProfileHeroCard({ profiles, style, onDecision }: ProfileHeroCard
     setCurrentProfileIndex((prev) => (safeProfiles.length === 0 ? 0 : (prev + 1) % safeProfiles.length));
     setCurrentPhotoIndex(0);
     setPhotoProgress(0);
+    isHoldPausedRef.current = false;
     setIsHoldPaused(false);
     setIsManualPaused(false);
   }, [safeProfiles.length]);
@@ -91,7 +103,8 @@ export function ProfileHeroCard({ profiles, style, onDecision }: ProfileHeroCard
     (decision: ProfileDecision) => {
       if (!currentProfile || isAnimatingOut) return;
 
-      controlPressActiveRef.current = false;
+      actionButtonActiveRef.current = false;
+      isHoldPausedRef.current = false;
       setIsAnimatingOut(true);
       setIsHoldPaused(false);
       setIsManualPaused(true);
@@ -104,19 +117,19 @@ export function ProfileHeroCard({ profiles, style, onDecision }: ProfileHeroCard
       }).start(() => {
         onDecision?.(currentProfile, decision);
         if (onDecision) {
-          // Parent removes/updates the swiped profile; avoid local index jump to prevent flicker.
           setCurrentPhotoIndex(0);
           setPhotoProgress(0);
+          isHoldPausedRef.current = false;
           setIsHoldPaused(false);
           setIsManualPaused(false);
-          controlPressActiveRef.current = false;
+          actionButtonActiveRef.current = false;
           cardTranslateX.setValue(0);
           setIsAnimatingOut(false);
           return;
         }
 
         advanceToNextProfile();
-        controlPressActiveRef.current = false;
+        actionButtonActiveRef.current = false;
         cardTranslateX.setValue(0);
         setIsAnimatingOut(false);
       });
@@ -168,7 +181,7 @@ export function ProfileHeroCard({ profiles, style, onDecision }: ProfileHeroCard
   useEffect(() => {
     setCurrentPhotoIndex(0);
     setPhotoProgress(0);
-    controlPressActiveRef.current = false;
+    actionButtonActiveRef.current = false;
   }, [currentProfile?.id]);
 
   useEffect(() => {
@@ -206,17 +219,33 @@ export function ProfileHeroCard({ profiles, style, onDecision }: ProfileHeroCard
     [cardWidth, goToNextPhoto, goToPreviousPhoto, isAnimatingOut, photos.length]
   );
 
+  // FIX: Hold pause handlers now update the ref synchronously so the pan responder
+  // can read the current value without being affected by React's async setState batching.
+  const handleHoldPressIn = useCallback(() => {
+    isHoldPausedRef.current = true;
+    setIsHoldPaused(true);
+  }, []);
+
+  const handleHoldPressOut = useCallback(() => {
+    isHoldPausedRef.current = false;
+    setIsHoldPaused(false);
+  }, []);
+
   const panResponder = useMemo(
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => false,
         onStartShouldSetPanResponderCapture: () => false,
         onPanResponderGrant: () => {
-          controlPressActiveRef.current = false;
+          // FIX: Don't reset hold or action state here — grant fires alongside
+          // onPressIn, so resetting would cancel valid hold/button presses.
           isSwipingRef.current = false;
         },
         onMoveShouldSetPanResponder: (_, gestureState) => {
-          if (controlPressActiveRef.current || isAnimatingOut) return false;
+          // FIX: Don't steal the gesture if an action button is being pressed.
+          if (actionButtonActiveRef.current || isAnimatingOut) return false;
+          // FIX: Also don't steal if the user is holding to pause.
+          if (isHoldPausedRef.current) return false;
           const horizontalDistance = Math.abs(gestureState.dx);
           const verticalDistance = Math.abs(gestureState.dy);
           return (
@@ -226,29 +255,24 @@ export function ProfileHeroCard({ profiles, style, onDecision }: ProfileHeroCard
         onPanResponderMove: (_, gestureState) => {
           if (Math.abs(gestureState.dx) <= Math.abs(gestureState.dy) * 1.1) return;
           isSwipingRef.current = true;
-          setIsHoldPaused(false);
+          // FIX: Don't touch hold state during a swipe move — the user is swiping, not holding.
           cardTranslateX.setValue(Math.max(-260, Math.min(260, gestureState.dx)));
         },
         onPanResponderRelease: (_, gestureState) => {
-          controlPressActiveRef.current = false;
-          setIsHoldPaused(false);
+          actionButtonActiveRef.current = false;
           const passedDistance = Math.abs(gestureState.dx) > SWIPE_TRIGGER_PX;
           const passedVelocity = Math.abs(gestureState.vx) > SWIPE_VELOCITY_TRIGGER;
           const shouldCommit = passedDistance || passedVelocity;
 
           if (shouldCommit && gestureState.dx > 0) {
             animateDecision('accept');
-            setTimeout(() => {
-              isSwipingRef.current = false;
-            }, 0);
+            setTimeout(() => { isSwipingRef.current = false; }, 0);
             return;
           }
 
           if (shouldCommit && gestureState.dx < 0) {
             animateDecision('reject');
-            setTimeout(() => {
-              isSwipingRef.current = false;
-            }, 0);
+            setTimeout(() => { isSwipingRef.current = false; }, 0);
             return;
           }
 
@@ -262,7 +286,8 @@ export function ProfileHeroCard({ profiles, style, onDecision }: ProfileHeroCard
           });
         },
         onPanResponderTerminate: () => {
-          controlPressActiveRef.current = false;
+          actionButtonActiveRef.current = false;
+          isHoldPausedRef.current = false;
           setIsHoldPaused(false);
           Animated.timing(cardTranslateX, {
             toValue: 0,
@@ -276,15 +301,6 @@ export function ProfileHeroCard({ profiles, style, onDecision }: ProfileHeroCard
       }),
     [animateDecision, cardTranslateX, isAnimatingOut]
   );
-
-  const beginControlPress = useCallback(() => {
-    controlPressActiveRef.current = true;
-    setIsHoldPaused(false);
-  }, []);
-
-  const endControlPress = useCallback(() => {
-    controlPressActiveRef.current = false;
-  }, []);
 
   if (!currentProfile || photos.length === 0) {
     return <View style={[styles.container, styles.emptyState, style]} />;
@@ -370,11 +386,13 @@ export function ProfileHeroCard({ profiles, style, onDecision }: ProfileHeroCard
         ]}>
         <View style={styles.imageContainer} onLayout={(event) => setCardWidth(event.nativeEvent.layout.width)}>
           <ImageBackground source={activePhoto} fadeDuration={0} style={styles.image} imageStyle={styles.imageRound}>
+            {/* FIX: mediaTouchLayer now uses the dedicated hold handlers so hold-pause
+                works correctly without interfering with the pan responder */}
             <Pressable
               style={styles.mediaTouchLayer}
               onPress={handleImageTap}
-              onPressIn={() => setIsHoldPaused(true)}
-              onPressOut={() => setIsHoldPaused(false)}
+              onPressIn={handleHoldPressIn}
+              onPressOut={handleHoldPressOut}
             />
 
             <View style={styles.progressRow}>
@@ -448,24 +466,30 @@ export function ProfileHeroCard({ profiles, style, onDecision }: ProfileHeroCard
                       inputRange: [0, 1],
                       outputRange: [RING_SIZE, 0],
                     }),
-                    marginTop: holdLayoutProgress.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0, 0],
-                    }),
                   },
                 ]}>
+                {/* FIX: Action buttons now use actionButtonActiveRef instead of the old
+                    controlPressActiveRef + timer system. onPressIn sets the flag so the
+                    pan responder's onMoveShouldSetPanResponder returns false, preventing
+                    it from stealing the touch. onPressOut clears it. */}
                 <Pressable
-                  onPressIn={beginControlPress}
-                  onPressOut={endControlPress}
-                  onPress={() => animateDecision('reject')}
+                  onPressIn={() => { actionButtonActiveRef.current = true; }}
+                  onPressOut={() => { actionButtonActiveRef.current = false; }}
+                  onPress={() => {
+                    actionButtonActiveRef.current = false;
+                    animateDecision('reject');
+                  }}
                   style={[styles.actionButton, styles.rejectButton]}>
                   <MaterialCommunityIcons name="close" size={28} color="#FFFFFF" />
                 </Pressable>
 
                 <Pressable
-                  onPressIn={beginControlPress}
-                  onPressOut={endControlPress}
-                  onPress={() => setIsManualPaused((prev) => !prev)}
+                  onPressIn={() => { actionButtonActiveRef.current = true; }}
+                  onPressOut={() => { actionButtonActiveRef.current = false; }}
+                  onPress={() => {
+                    actionButtonActiveRef.current = false;
+                    setIsManualPaused((prev) => !prev);
+                  }}
                   style={[styles.actionButton, styles.pauseWrapper]}>
                   <View pointerEvents="none" style={styles.progressRing}>
                     {Array.from({ length: RING_SEGMENTS }).map((_, index) => {
@@ -496,9 +520,12 @@ export function ProfileHeroCard({ profiles, style, onDecision }: ProfileHeroCard
                 </Pressable>
 
                 <Pressable
-                  onPressIn={beginControlPress}
-                  onPressOut={endControlPress}
-                  onPress={() => animateDecision('accept')}
+                  onPressIn={() => { actionButtonActiveRef.current = true; }}
+                  onPressOut={() => { actionButtonActiveRef.current = false; }}
+                  onPress={() => {
+                    actionButtonActiveRef.current = false;
+                    animateDecision('accept');
+                  }}
                   style={[styles.actionButton, styles.acceptButton]}>
                   <MaterialCommunityIcons name="handshake-outline" size={26} color="#FFFFFF" />
                 </Pressable>

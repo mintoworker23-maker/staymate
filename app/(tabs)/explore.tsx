@@ -127,7 +127,7 @@ export default function MatchExploreScreen() {
         activeIndex={1}
         onChange={(index) => {
           if (index === 0) {
-            router.push('/');
+            router.push('/home');
           }
           if (index === 2) {
             router.push('/chat');

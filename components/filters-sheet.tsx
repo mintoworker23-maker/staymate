@@ -174,7 +174,7 @@ export function FiltersSheet({ visible, onClose, values, onApply }: FiltersSheet
             </View>
 
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Accomodation</Text>
+              <Text style={styles.sectionTitle}>Accommodation</Text>
               <View style={styles.rowChips}>
                 {accommodationOptions.map((option) => {
                   const active = option.key === accommodation;
@@ -276,8 +276,9 @@ const styles = StyleSheet.create({
   },
   sheetTitle: {
     color: '#FFFFFF',
-    fontSize: 26,
-    fontWeight: '700',
+    fontSize: 24,
+    lineHeight: 30,
+    fontFamily: 'Prompt-Bold',
   },
   closeButton: {
     width: 46,
@@ -292,8 +293,9 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     color: '#FFFFFF',
-    fontSize: 22,
-    fontWeight: '600',
+    fontSize: 18,
+    lineHeight: 24,
+    fontFamily: 'Prompt-SemiBold',
     marginBottom: 8,
   },
   rowChips: {
@@ -317,8 +319,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   chipText: {
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: 'Prompt-SemiBold',
   },
   chipTextActive: {
     color: '#211246',
@@ -338,8 +341,9 @@ const styles = StyleSheet.create({
   },
   valueText: {
     color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 15,
+    lineHeight: 20,
+    fontFamily: 'Prompt-SemiBold',
   },
   sliderRoot: {
     height: 32,
@@ -381,7 +385,8 @@ const styles = StyleSheet.create({
   },
   applyText: {
     color: '#120925',
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: 18,
+    lineHeight: 24,
+    fontFamily: 'Prompt-SemiBold',
   },
 });

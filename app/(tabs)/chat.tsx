@@ -222,7 +222,7 @@ export default function ChatScreen() {
         activeIndex={2}
         onChange={(index) => {
           if (index === 0) {
-            router.push('/');
+            router.push('/home');
           }
           if (index === 1) {
             router.push('/explore');
