@@ -1,5 +1,6 @@
 import React from 'react';
 import { useRouter } from 'expo-router';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { Animated, ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from 'react-native-svg';
@@ -59,6 +60,13 @@ export default function StartScreen() {
 
         <Pressable style={styles.confirmButton} onPress={() => router.push('/university-login')}>
           <Text style={styles.confirmButtonText}>Confirm</Text>
+        </Pressable>
+
+        <Pressable
+          style={styles.googleButton}
+          onPress={() => router.push({ pathname: '/university-code', params: { mode: 'login' } })}>
+          <MaterialCommunityIcons name="login-variant" size={20} color="#3A237F" />
+          <Text style={styles.googleButtonText}>Login</Text>
         </Pressable>
       </Animated.View>
     </SafeAreaView>
@@ -127,5 +135,22 @@ const styles = StyleSheet.create({
     color: '#120C2B',
     fontFamily: 'Prompt-SemiBold',
     fontSize: 18,
+  },
+  googleButton: {
+    marginTop: 10,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.4,
+    borderColor: '#E5DDFE',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  googleButtonText: {
+    color: '#3A237F',
+    fontFamily: 'Prompt-SemiBold',
+    fontSize: 16,
   },
 });

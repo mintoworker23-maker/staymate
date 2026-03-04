@@ -5,6 +5,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ActivityIndicator,
   StyleSheet,
   Text,
   TextInput,
@@ -12,9 +13,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useOnboardingProfileStore } from '@/context/onboarding-profile-store';
+import { sendPasswordReset, signInOrCreateWithPassword } from '@/lib/auth';
+import { getLastLoginEmail, saveLastLoginEmail } from '@/lib/auth-session';
+import { getUserProfile } from '@/lib/user-profile';
+
 const QUESTION_STEPS = 7;
-const DUMMY_VERIFICATION_CODE = '123456';
-const CODE_PATTERN = /^\d{6}$/;
+const MIN_PASSWORD_LENGTH = 6;
 
 function maskEmail(email: string) {
   const normalized = email.trim().toLowerCase();
@@ -25,29 +30,154 @@ function maskEmail(email: string) {
   return `${visiblePrefix}${'*'.repeat(Math.max(localPart.length - 2, 2))}@${domain}`;
 }
 
+function getFirebaseErrorCode(error: unknown) {
+  if (!error || typeof error !== 'object') return null;
+  if (!('code' in error)) return null;
+
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string' ? code : null;
+}
+
 export default function UniversityCodeScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ email?: string }>();
-  const email = typeof params.email === 'string' ? params.email : '';
+  const { resetDraft, setAccountEmail } = useOnboardingProfileStore();
+  const params = useLocalSearchParams<{ email?: string; mode?: string }>();
+  const paramEmail = typeof params.email === 'string' ? params.email : '';
+  const isLoginMode = params.mode === 'login';
+  const [resolvedEmail, setResolvedEmail] = React.useState(paramEmail);
+  const [isResolvingEmail, setIsResolvingEmail] = React.useState(!paramEmail);
 
-  const [code, setCode] = React.useState('');
+  const [password, setPassword] = React.useState('');
+  const [passwordVisible, setPasswordVisible] = React.useState(false);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [isSendingReset, setIsSendingReset] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+  const [infoMessage, setInfoMessage] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    if (paramEmail) {
+      setResolvedEmail(paramEmail);
+      setIsResolvingEmail(false);
+      void saveLastLoginEmail(paramEmail);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setIsResolvingEmail(true);
+    setErrorMessage(null);
+    void (async () => {
+      try {
+        const rememberedEmail = await getLastLoginEmail();
+        if (cancelled) return;
+
+        if (!rememberedEmail) {
+          setResolvedEmail('');
+          setErrorMessage('No saved email found. Use university email first.');
+          return;
+        }
+
+        setResolvedEmail(rememberedEmail);
+      } catch {
+        if (!cancelled) {
+          setErrorMessage('Unable to load saved login email. Use university email first.');
+        }
+      } finally {
+        if (!cancelled) {
+          setIsResolvingEmail(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [paramEmail]);
 
   const handleConfirm = React.useCallback(() => {
-    const normalizedCode = code.trim();
-    if (!CODE_PATTERN.test(normalizedCode)) {
-      setErrorMessage('Enter the 6-digit code.');
+    if (isSubmitting) return;
+
+    if (!resolvedEmail) {
+      setErrorMessage('Missing email. Go back and enter your university email.');
       return;
     }
 
-    if (normalizedCode !== DUMMY_VERIFICATION_CODE) {
-      setErrorMessage('Invalid code. Use 123456 for now.');
+    const normalizedPassword = password.trim();
+    if (normalizedPassword.length < MIN_PASSWORD_LENGTH) {
+      setErrorMessage(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
       return;
     }
 
+    setIsSubmitting(true);
     setErrorMessage(null);
-    router.push('/question-basic-info');
-  }, [code, router]);
+    setInfoMessage(null);
+
+    void (async () => {
+      try {
+        const credentials = await signInOrCreateWithPassword(resolvedEmail, normalizedPassword);
+        const existingProfile = await getUserProfile(credentials.user.uid);
+
+        if (existingProfile) {
+          resetDraft();
+          router.replace('/home');
+          return;
+        }
+
+        resetDraft();
+        setAccountEmail(resolvedEmail);
+        router.replace('/question-basic-info');
+      } catch (error) {
+        const code = getFirebaseErrorCode(error);
+        if (
+          code === 'auth/invalid-credential' ||
+          code === 'auth/wrong-password' ||
+          code === 'auth/invalid-password'
+        ) {
+          setErrorMessage('Incorrect password. Please try again.');
+        } else if (code === 'auth/weak-password') {
+          setErrorMessage('Password is too weak. Use at least 6 characters.');
+        } else if (code === 'auth/too-many-requests') {
+          setErrorMessage('Too many attempts. Please wait and try again.');
+        } else {
+          setErrorMessage('Unable to sign in right now. Please try again.');
+        }
+      } finally {
+        setIsSubmitting(false);
+      }
+    })();
+  }, [isSubmitting, password, resetDraft, resolvedEmail, router, setAccountEmail]);
+
+  const handleSendReset = React.useCallback(() => {
+    if (isSendingReset) return;
+    if (!resolvedEmail) {
+      setErrorMessage('Missing email. Go back and enter your university email.');
+      return;
+    }
+
+    setIsSendingReset(true);
+    setErrorMessage(null);
+    setInfoMessage(null);
+
+    void (async () => {
+      try {
+        await sendPasswordReset(resolvedEmail);
+        setInfoMessage(`Password reset email sent to ${maskEmail(resolvedEmail)}.`);
+      } catch (error) {
+        const code = getFirebaseErrorCode(error);
+        if (code === 'auth/user-not-found') {
+          setErrorMessage('No account found for this email yet. Create one by setting a password.');
+        } else if (code === 'auth/too-many-requests') {
+          setErrorMessage('Too many requests. Please wait before trying again.');
+        } else {
+          setErrorMessage('Unable to send reset email right now. Please try again.');
+        }
+      } finally {
+        setIsSendingReset(false);
+      }
+    })();
+  }, [isSendingReset, resolvedEmail]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -58,7 +188,7 @@ export default function UniversityCodeScreen() {
           <Pressable style={styles.backButton} onPress={() => router.back()}>
             <MaterialCommunityIcons name="arrow-left" size={28} color="#FFFFFF" />
           </Pressable>
-          <Text style={styles.headerTitle}>Code Verification</Text>
+          <Text style={styles.headerTitle}>{isLoginMode ? 'Login' : 'Account Password'}</Text>
         </View>
 
         <Text style={styles.questionText}>Question 2/7</Text>
@@ -76,42 +206,60 @@ export default function UniversityCodeScreen() {
         </View>
 
         <Text style={styles.infoText}>
-          {`Enter the 6-digit code sent to ${maskEmail(email || 'your university email')}`}
+          {isResolvingEmail
+            ? 'Loading your login account...'
+            : `Enter your password for ${maskEmail(resolvedEmail || 'your university email')}.`}
         </Text>
 
         <View style={[styles.codeFieldWrap, errorMessage ? styles.codeFieldWrapError : null]}>
           <TextInput
-            value={code}
+            value={password}
             onChangeText={(value) => {
-              const numbersOnly = value.replace(/[^0-9]/g, '').slice(0, 6);
-              setCode(numbersOnly);
+              setPassword(value);
               if (errorMessage) setErrorMessage(null);
+              if (infoMessage) setInfoMessage(null);
             }}
-            placeholder="Enter verification code"
+            placeholder="Enter password"
             placeholderTextColor="#A69BC9"
-            keyboardType="number-pad"
             autoCapitalize="none"
             autoCorrect={false}
-            maxLength={6}
+            secureTextEntry={!passwordVisible}
             style={styles.codeInput}
+            editable={!isResolvingEmail}
           />
+          <Pressable
+            style={styles.visibilityButton}
+            onPress={() => setPasswordVisible((current) => !current)}
+            disabled={isResolvingEmail}>
+            <MaterialCommunityIcons
+              name={passwordVisible ? 'eye-off-outline' : 'eye-outline'}
+              size={20}
+              color="#D8CCFF"
+            />
+          </Pressable>
         </View>
 
-        <Pressable
-          style={styles.resendRow}
-          onPress={() => {
-            setErrorMessage('Dummy mode: use code 123456.');
-          }}>
-          <Text style={styles.resendText}>Didn’t get a code? </Text>
-          <Text style={styles.resendAccent}>Resend</Text>
+        <Pressable style={styles.resendRow} onPress={handleSendReset} disabled={isSendingReset}>
+          {isSendingReset ? <ActivityIndicator size="small" color="#D5FF78" style={styles.resetSpinner} /> : null}
+          <Text style={styles.resendText}>Forgot password? </Text>
+          <Text style={styles.resendAccent}>Send reset email</Text>
         </Pressable>
 
+        {infoMessage ? <Text style={styles.infoStatusText}>{infoMessage}</Text> : null}
         {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+        {isLoginMode && !resolvedEmail ? (
+          <Pressable style={styles.useEmailButton} onPress={() => router.replace('/university-login')}>
+            <Text style={styles.useEmailButtonText}>Use university email instead</Text>
+          </Pressable>
+        ) : null}
 
         <View style={styles.bottomSpacer} />
 
-        <Pressable style={styles.confirmButton} onPress={handleConfirm}>
-          <Text style={styles.confirmButtonText}>Confirm</Text>
+        <Pressable
+          style={[styles.confirmButton, isSubmitting ? styles.confirmButtonDisabled : null]}
+          onPress={handleConfirm}
+          disabled={isSubmitting || isResolvingEmail}>
+          <Text style={styles.confirmButtonText}>{isSubmitting ? 'Signing in...' : 'Confirm'}</Text>
         </Pressable>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -188,7 +336,8 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     height: 88,
     backgroundColor: '#5630A6',
-    justifyContent: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 18,
   },
   codeFieldWrapError: {
@@ -196,15 +345,27 @@ const styles = StyleSheet.create({
     borderColor: '#FF9FB8',
   },
   codeInput: {
+    flex: 1,
     color: '#FFFFFF',
     fontSize: 15,
     lineHeight: 20,
     fontFamily: 'Prompt-SemiBold',
   },
+  visibilityButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   resendRow: {
     marginTop: 16,
     flexDirection: 'row',
     alignSelf: 'center',
+    alignItems: 'center',
+  },
+  resetSpinner: {
+    marginRight: 6,
   },
   resendText: {
     color: '#FFFFFF',
@@ -212,6 +373,26 @@ const styles = StyleSheet.create({
     fontFamily: 'Prompt',
   },
   resendAccent: {
+    color: '#D5FF78',
+    fontSize: 12,
+    fontFamily: 'Prompt-SemiBold',
+  },
+  infoStatusText: {
+    marginTop: 10,
+    color: '#CFFB75',
+    fontSize: 11,
+    lineHeight: 16,
+    fontFamily: 'Prompt-SemiBold',
+    textAlign: 'center',
+    paddingHorizontal: 12,
+  },
+  useEmailButton: {
+    marginTop: 12,
+    alignSelf: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  useEmailButtonText: {
     color: '#D5FF78',
     fontSize: 12,
     fontFamily: 'Prompt-SemiBold',
@@ -234,6 +415,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 10,
+  },
+  confirmButtonDisabled: {
+    opacity: 0.7,
   },
   confirmButtonText: {
     color: '#1A123A',

@@ -2,7 +2,7 @@ import React from 'react';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useRouter } from 'expo-router';
 import { FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomNavigation } from '@/components/bottom-navigation';
 import { ExpandingSearch } from '@/components/expanding-search';
@@ -29,6 +29,7 @@ function MatchCard({ person, onPress }: { person: MatchPerson; onPress: () => vo
 
 export default function MatchExploreScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { rejectedPersonIds } = useMatchFeedStore();
   const [people, setPeople] = React.useState<MatchPerson[]>(seedPeople);
   const [isReloading, setIsReloading] = React.useState(false);
@@ -74,6 +75,8 @@ export default function MatchExploreScreen() {
       }
     };
   }, []);
+  const navigationBottom = Math.max(insets.bottom + 12, 34);
+  const listBottomPadding = 145 + (navigationBottom - 34);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -118,12 +121,12 @@ export default function MatchExploreScreen() {
         onRefresh={handleReload}
         columnWrapperStyle={styles.rowGap}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: listBottomPadding }]}
         ListEmptyComponent={<Text style={styles.emptyText}>No roommates found.</Text>}
       />
 
       <BottomNavigation
-        style={styles.navigation}
+        style={[styles.navigation, { bottom: navigationBottom }]}
         activeIndex={1}
         onChange={(index) => {
           if (index === 0) {

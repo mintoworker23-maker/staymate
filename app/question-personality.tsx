@@ -4,11 +4,30 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useOnboardingProfileStore } from '@/context/onboarding-profile-store';
+
 const QUESTION_STEPS = 7;
+
+const accommodationStatusOptions = [
+  { key: 'yes', label: 'Yes, I already have accommodation' },
+  { key: 'no', label: 'No, I am still looking' },
+] as const;
+
+type AccommodationStatus = (typeof accommodationStatusOptions)[number]['key'];
 
 export default function PersonalityQuestionScreen() {
   const router = useRouter();
-  const [selectedIndex, setSelectedIndex] = React.useState<number | null>(4);
+  const { draft, setHasAccommodation } = useOnboardingProfileStore();
+  const [selectedStatus, setSelectedStatus] = React.useState<AccommodationStatus | null>(
+    draft.hasAccommodation === null ? null : draft.hasAccommodation ? 'yes' : 'no'
+  );
+
+  const handleConfirm = React.useCallback(() => {
+    if (!selectedStatus) return;
+
+    setHasAccommodation(selectedStatus === 'yes');
+    router.push('/question-interests');
+  }, [router, selectedStatus, setHasAccommodation]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -17,7 +36,7 @@ export default function PersonalityQuestionScreen() {
           <Pressable style={styles.backButton} onPress={() => router.back()}>
             <MaterialCommunityIcons name="arrow-left" size={28} color="#FFFFFF" />
           </Pressable>
-          <Text style={styles.headerTitle}>Personality type</Text>
+          <Text style={styles.headerTitle}>Accommodation status</Text>
         </View>
 
         <Text style={styles.questionText}>Question 5/7</Text>
@@ -31,36 +50,40 @@ export default function PersonalityQuestionScreen() {
           ))}
         </View>
 
-        <Text style={styles.promptText}>{'I\'m comfortable living\nwith female roommates'}</Text>
+        <Text style={styles.promptText}>Do you currently have accommodation?</Text>
 
-        <View style={styles.scaleRow}>
-          {Array.from({ length: 5 }).map((_, index) => {
-            const isSelected = selectedIndex === index;
+        <View style={styles.optionList}>
+          {accommodationStatusOptions.map((option) => {
+            const isSelected = selectedStatus === option.key;
             return (
               <Pressable
-                key={`scale-${index}`}
-                style={[styles.scaleOption, isSelected ? styles.scaleOptionSelected : null]}
-                onPress={() => setSelectedIndex(index)}>
-                {isSelected ? <MaterialCommunityIcons name="check" size={32} color="#1E1341" /> : null}
+                key={option.key}
+                style={[styles.statusOption, isSelected ? styles.statusOptionSelected : styles.statusOptionIdle]}
+                onPress={() => setSelectedStatus(option.key)}>
+                <View style={styles.statusTextWrap}>
+                  <Text
+                    style={[
+                      styles.statusOptionText,
+                      isSelected ? styles.statusOptionTextSelected : styles.statusOptionTextIdle,
+                    ]}>
+                    {option.label}
+                  </Text>
+                </View>
+                {isSelected ? (
+                  <View style={styles.statusCheckWrap}>
+                    <MaterialCommunityIcons name="check" size={22} color="#1E1341" />
+                  </View>
+                ) : null}
               </Pressable>
             );
           })}
-        </View>
-
-        <View style={styles.scaleLabelsRow}>
-          <Text style={styles.scaleLabel}>Disagree</Text>
-          <Text style={styles.scaleLabel}>Not Sure</Text>
-          <Text style={styles.scaleLabel}>Agree</Text>
         </View>
 
         <View style={styles.bottomSpacer} />
 
         <Pressable
           style={styles.confirmButton}
-          onPress={() => {
-            if (selectedIndex === null) return;
-            router.push('/question-interests');
-          }}>
+          onPress={handleConfirm}>
           <Text style={styles.confirmButtonText}>Confirm</Text>
         </Pressable>
       </View>
@@ -127,43 +150,54 @@ const styles = StyleSheet.create({
   promptText: {
     marginTop: 38,
     color: '#FFFFFF',
-    fontSize: 20,
-    lineHeight: 28,
+    fontSize: 21,
+    lineHeight: 29,
     fontFamily: 'Prompt-SemiBold',
     textAlign: 'center',
     paddingHorizontal: 10,
   },
-  scaleRow: {
-    marginTop: 32,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 0,
+  optionList: {
+    marginTop: 28,
+    gap: 12,
   },
-  scaleOption: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    borderWidth: 3,
+  statusOption: {
+    minHeight: 64,
+    borderRadius: 18,
+    borderWidth: 2,
     borderColor: '#CFFB75',
+    paddingHorizontal: 14,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
+    justifyContent: 'space-between',
   },
-  scaleOptionSelected: {
+  statusOptionSelected: {
     backgroundColor: '#CFFB75',
   },
-  scaleLabelsRow: {
-    marginTop: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 8,
+  statusOptionIdle: {
+    backgroundColor: 'transparent',
   },
-  scaleLabel: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    lineHeight: 16,
-    fontFamily: 'Prompt',
+  statusTextWrap: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  statusOptionText: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontFamily: 'Prompt-SemiBold',
+  },
+  statusOptionTextSelected: {
+    color: '#1E1341',
+  },
+  statusOptionTextIdle: {
+    color: '#CFFB75',
+  },
+  statusCheckWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#B7E463',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   bottomSpacer: {
     flex: 1,

@@ -2,7 +2,7 @@ import React from 'react';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useRouter } from 'expo-router';
 import { FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomNavigation } from '@/components/bottom-navigation';
 import { ExpandingSearch } from '@/components/expanding-search';
@@ -48,6 +48,7 @@ function RequestCard({ person, onPress }: { person: RequestPerson; onPress: () =
 
 export default function RequestsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { rejectedPersonIds, matchedPersonIds } = useMatchFeedStore();
   const [searchQuery, setSearchQuery] = React.useState('');
 
@@ -64,6 +65,8 @@ export default function RequestsScreen() {
       return person.name.toLowerCase().includes(query) || person.role.toLowerCase().includes(query);
     });
   }, [matchedPersonIds, rejectedPersonIds, searchQuery]);
+  const navigationBottom = Math.max(insets.bottom + 12, 34);
+  const listBottomPadding = 145 + (navigationBottom - 34);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -96,12 +99,12 @@ export default function RequestsScreen() {
         numColumns={2}
         columnWrapperStyle={styles.rowGap}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: listBottomPadding }]}
         ListEmptyComponent={<Text style={styles.emptyText}>No match requests found.</Text>}
       />
 
       <BottomNavigation
-        style={styles.navigation}
+        style={[styles.navigation, { bottom: navigationBottom }]}
         activeIndex={3}
         onChange={(index) => {
           if (index === 0) {

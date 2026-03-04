@@ -12,6 +12,8 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.theateam.staymate",
+      "googleServicesFile": "./google-services.json",
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
@@ -42,8 +44,7 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
-    ,
+    },
     "splash": {
       "backgroundColor": "#5c00ff"
     }

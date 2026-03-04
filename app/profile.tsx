@@ -19,24 +19,138 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BrandedPromptModal } from '@/components/branded-prompt-modal';
+import { useAuthStore } from '@/context/auth-store';
+import { subscribeToUserProfile, updateUserProfile } from '@/lib/user-profile';
+import type { UserProfileInput } from '@/types/user-profile';
+
+type ContactRowId = 'full-name' | 'age' | 'phone' | 'whatsapp' | 'email';
 
 type ContactRow = {
-  id: string;
+  id: ContactRowId;
   label: string;
   value: string;
+  editable: boolean;
 };
 
-const initialContactRows: ContactRow[] = [
-  { id: 'full-name', label: 'Full name', value: 'Teddy Omondi' },
-  { id: 'age', label: 'Age', value: '21' },
-  { id: 'phone', label: 'Phone number', value: '+254769107256' },
-  { id: 'whatsapp', label: 'WhatsApp number', value: '+254769107256' },
-  { id: 'email', label: 'Email address', value: 'basicbciso@g...' },
-];
+const MIN_AGE = 16;
+const MAX_AGE = 99;
+
+const CONTACT_ROW_LABELS: Record<ContactRowId, string> = {
+  'full-name': 'Full name',
+  age: 'Age',
+  phone: 'Phone number',
+  whatsapp: 'WhatsApp number',
+  email: 'Email address',
+};
+
+function isValidKenyaMobileNumber(value: string) {
+  return (
+    /^0(7\d{8}|1\d{8})$/.test(value) ||
+    /^(7\d{8}|1\d{8})$/.test(value) ||
+    /^254(7\d{8}|1\d{8})$/.test(value) ||
+    /^\+254(7\d{8}|1\d{8})$/.test(value)
+  );
+}
+
+function sanitizePhoneInput(value: string) {
+  const trimmed = value.replace(/\s+/g, '');
+  const hasPlus = trimmed.startsWith('+');
+  const digitsOnly = trimmed.replace(/[^0-9]/g, '');
+  return `${hasPlus ? '+' : ''}${digitsOnly}`;
+}
+
+function buildContactRows(args: {
+  fullName: string;
+  age: number;
+  phoneNumber: string;
+  whatsAppNumber: string;
+  email: string;
+}): ContactRow[] {
+  return [
+    {
+      id: 'full-name',
+      label: CONTACT_ROW_LABELS['full-name'],
+      value: args.fullName || 'Not set',
+      editable: true,
+    },
+    {
+      id: 'age',
+      label: CONTACT_ROW_LABELS.age,
+      value: args.age > 0 ? String(args.age) : 'Not set',
+      editable: true,
+    },
+    {
+      id: 'phone',
+      label: CONTACT_ROW_LABELS.phone,
+      value: args.phoneNumber || 'Not set',
+      editable: true,
+    },
+    {
+      id: 'whatsapp',
+      label: CONTACT_ROW_LABELS.whatsapp,
+      value: args.whatsAppNumber || 'Not set',
+      editable: true,
+    },
+    {
+      id: 'email',
+      label: CONTACT_ROW_LABELS.email,
+      value: args.email || 'Not set',
+      editable: false,
+    },
+  ];
+}
+
+function toProfileUpdate(
+  rowId: ContactRowId,
+  rawValue: string
+): { updates: Partial<UserProfileInput> } | { error: string } {
+  switch (rowId) {
+    case 'full-name': {
+      if (rawValue.length < 2) {
+        return { error: 'Full name must have at least 2 characters.' };
+      }
+      return { updates: { fullName: rawValue } };
+    }
+    case 'age': {
+      const numericAge = Number(rawValue);
+      if (!Number.isInteger(numericAge) || numericAge < MIN_AGE || numericAge > MAX_AGE) {
+        return { error: `Age must be between ${MIN_AGE} and ${MAX_AGE}.` };
+      }
+      return { updates: { age: numericAge } };
+    }
+    case 'phone': {
+      if (!isValidKenyaMobileNumber(rawValue)) {
+        return { error: 'Use a valid Kenya mobile number.' };
+      }
+      return { updates: { phoneNumber: rawValue } };
+    }
+    case 'whatsapp': {
+      if (!isValidKenyaMobileNumber(rawValue)) {
+        return { error: 'Use a valid Kenya WhatsApp number.' };
+      }
+      return { updates: { whatsAppNumber: rawValue } };
+    }
+    case 'email': {
+      return { error: 'Email is managed by your sign-in account.' };
+    }
+    default: {
+      return { error: 'This field cannot be updated.' };
+    }
+  }
+}
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const [contactRows, setContactRows] = React.useState<ContactRow[]>(initialContactRows);
+  const { user, loading, signOutCurrentUser } = useAuthStore();
+  const [contactRows, setContactRows] = React.useState<ContactRow[]>(
+    buildContactRows({
+      fullName: '',
+      age: 0,
+      phoneNumber: '',
+      whatsAppNumber: '',
+      email: user?.email ?? '',
+    })
+  );
   const [profileAvatar, setProfileAvatar] = React.useState<ImageSourcePropType>(
     require('@/assets/images/image.png')
   );
@@ -48,8 +162,47 @@ export default function ProfileScreen() {
   ]);
   const [editorVisible, setEditorVisible] = React.useState(false);
   const [logoutPromptVisible, setLogoutPromptVisible] = React.useState(false);
-  const [editingRowId, setEditingRowId] = React.useState<string | null>(null);
+  const [editingRowId, setEditingRowId] = React.useState<ContactRowId | null>(null);
   const [editingValue, setEditingValue] = React.useState('');
+  const [profileLoading, setProfileLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    if (!loading && !user) {
+      router.replace('/start');
+    }
+  }, [loading, router, user]);
+
+  React.useEffect(() => {
+    if (!user) {
+      setProfileLoading(false);
+      setContactRows(
+        buildContactRows({
+          fullName: '',
+          age: 0,
+          phoneNumber: '',
+          whatsAppNumber: '',
+          email: '',
+        })
+      );
+      return;
+    }
+
+    setProfileLoading(true);
+    const unsubscribe = subscribeToUserProfile(user.uid, (profile) => {
+      setContactRows(
+        buildContactRows({
+          fullName: profile?.fullName ?? '',
+          age: profile?.age ?? 0,
+          phoneNumber: profile?.phoneNumber ?? '',
+          whatsAppNumber: profile?.whatsAppNumber ?? '',
+          email: profile?.email ?? user.email ?? '',
+        })
+      );
+      setProfileLoading(false);
+    });
+
+    return unsubscribe;
+  }, [user]);
 
   const addImageAt = React.useCallback(async (slotIndex: number) => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -102,8 +255,13 @@ export default function ProfileScreen() {
   }, [editingRowId]);
 
   const openEditor = (row: ContactRow) => {
+    if (!row.editable) {
+      Alert.alert('Locked field', 'Email is managed by your sign-in account.');
+      return;
+    }
+
     setEditingRowId(row.id);
-    setEditingValue(row.value);
+    setEditingValue(row.value === 'Not set' ? '' : row.value);
     setEditorVisible(true);
   };
 
@@ -114,14 +272,42 @@ export default function ProfileScreen() {
   };
 
   const applyEdit = () => {
-    if (!editingRowId) return;
-    const nextValue = editingValue.trim();
-    if (!nextValue) return;
+    if (!editingRowId || !user) return;
 
+    const nextValue = editingValue.trim();
+    if (!nextValue) {
+      Alert.alert('Missing value', 'Enter a value before applying changes.');
+      return;
+    }
+
+    const result = toProfileUpdate(editingRowId, nextValue);
+    if ('error' in result) {
+      Alert.alert('Invalid value', result.error);
+      return;
+    }
+
+    const normalizedDisplayValue =
+      editingRowId === 'phone' || editingRowId === 'whatsapp'
+        ? sanitizePhoneInput(nextValue)
+        : nextValue;
+
+    const previousRows = contactRows;
     setContactRows((prev) =>
-      prev.map((row) => (row.id === editingRowId ? { ...row, value: nextValue } : row))
+      prev.map((row) =>
+        row.id === editingRowId ? { ...row, value: normalizedDisplayValue } : row
+      )
     );
+
     closeEditor();
+
+    void (async () => {
+      try {
+        await updateUserProfile(user.uid, result.updates);
+      } catch {
+        setContactRows(previousRows);
+        Alert.alert('Update failed', 'Unable to save changes right now. Please try again.');
+      }
+    })();
   };
 
   const pickProfileImage = React.useCallback(async () => {
@@ -148,8 +334,15 @@ export default function ProfileScreen() {
   }, []);
 
   const confirmLogout = React.useCallback(() => {
-    router.replace('/start');
-  }, [router]);
+    void (async () => {
+      try {
+        await signOutCurrentUser();
+      } finally {
+        setLogoutPromptVisible(false);
+        router.replace('/start');
+      }
+    })();
+  }, [router, signOutCurrentUser]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -169,7 +362,7 @@ export default function ProfileScreen() {
           </View>
 
           <Text style={styles.userName}>
-            {profileAge ? `${profileName}, ${profileAge}` : profileName}
+            {profileAge && profileAge !== 'Not set' ? `${profileName}, ${profileAge}` : profileName}
           </Text>
 
           <Pressable style={styles.logoutButton} onPress={handleLogout}>
@@ -204,13 +397,19 @@ export default function ProfileScreen() {
           })}
         </View>
 
+        {profileLoading ? <Text style={styles.loadingText}>Loading profile...</Text> : null}
+
         <View style={styles.detailsList}>
           {contactRows.map((row) => (
             <Pressable key={row.id} style={styles.detailRow} onPress={() => openEditor(row)}>
               <Text style={styles.detailLabel}>{row.label}</Text>
               <View style={styles.detailValueWrap}>
                 <Text style={styles.detailValue}>{row.value}</Text>
-                <MaterialCommunityIcons name="chevron-right" size={30} color="#FFFFFF" />
+                {row.editable ? (
+                  <MaterialCommunityIcons name="chevron-right" size={30} color="#FFFFFF" />
+                ) : (
+                  <MaterialCommunityIcons name="lock-outline" size={20} color="#FFFFFF" />
+                )}
               </View>
             </Pressable>
           ))}
@@ -247,7 +446,14 @@ export default function ProfileScreen() {
               <View style={styles.editorInputWrap}>
                 <TextInput
                   value={editingValue}
-                  onChangeText={setEditingValue}
+                  onChangeText={(value) => {
+                    if (editingRowId === 'phone' || editingRowId === 'whatsapp') {
+                      setEditingValue(sanitizePhoneInput(value).slice(0, 16));
+                      return;
+                    }
+
+                    setEditingValue(value);
+                  }}
                   placeholder="Enter value"
                   placeholderTextColor="#CBBDF0"
                   keyboardType={editorKeyboardType}
@@ -368,6 +574,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  loadingText: {
+    marginTop: 14,
+    color: '#E5D7FF',
+    fontSize: 12,
+    lineHeight: 16,
+    fontFamily: 'Prompt-SemiBold',
+    textAlign: 'center',
+  },
   detailsList: {
     marginTop: 14,
     gap: 10,
@@ -389,7 +603,7 @@ const styles = StyleSheet.create({
   detailValueWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+    gap: 6,
     maxWidth: '62%',
   },
   detailValue: {

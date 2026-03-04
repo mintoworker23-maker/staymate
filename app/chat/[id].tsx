@@ -531,7 +531,7 @@ export default function ChatDetailScreen() {
 
   if (!conversation) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <View style={styles.emptyWrap}>
           <Text style={styles.emptyTitle}>Chat not found</Text>
           <Pressable style={styles.emptyBackButton} onPress={() => router.back()}>
@@ -543,7 +543,7 @@ export default function ChatDetailScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <KeyboardAvoidingView
         style={styles.keyboardWrap}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}

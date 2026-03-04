@@ -11,14 +11,16 @@ import {
   Text,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomNavigation } from '@/components/bottom-navigation';
 import { FiltersSheet } from '@/components/filters-sheet';
 import { ProfileHeroCard, SwipeProfile } from '@/components/profile-hero-card';
+import { useAuthStore } from '@/context/auth-store';
 import { useChatStore } from '@/context/chat-store';
 import { useMatchFeedStore } from '@/context/match-feed-store';
 import { matchPeople } from '@/data/people';
+import { subscribeToUserProfile } from '@/lib/user-profile';
 
 type HomeSwipeProfile = SwipeProfile & {
   source: 'roommates' | 'requests';
@@ -28,7 +30,7 @@ const fallbackPhotos: ImageSourcePropType[] = [
   require('@/assets/images/image.png'),
   require('@/assets/images/home-profile.png'),
   require('@/assets/images/IMG_0001_1 1.png'),
-  require('@/assets/images/icon.png'),
+  require('@/assets/images/home-profile.png'),
   require('@/assets/images/grafiti.png'),
 ];
 
@@ -66,6 +68,8 @@ function getFirstName(name: string) {
 
 export default function HomeScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { user, loading } = useAuthStore();
   const { upsertConversationFromMatch } = useChatStore();
   const { rejectedPersonIds, matchedPersonIds, rejectPerson, markMatched, resetFeedDecisions } =
     useMatchFeedStore();
@@ -75,10 +79,30 @@ export default function HomeScreen() {
   const [decisionNotice, setDecisionNotice] = React.useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [profiles, setProfiles] = React.useState<HomeSwipeProfile[]>(() => buildHomeProfiles());
+  const [currentUserName, setCurrentUserName] = React.useState('');
   const noticeTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshSpin = React.useRef(new Animated.Value(0)).current;
   const refreshAnimationRef = React.useRef<Animated.CompositeAnimation | null>(null);
+
+  React.useEffect(() => {
+    if (!loading && !user) {
+      router.replace('/start');
+    }
+  }, [loading, router, user]);
+
+  React.useEffect(() => {
+    if (!user) {
+      setCurrentUserName('');
+      return;
+    }
+
+    const unsubscribe = subscribeToUserProfile(user.uid, (profile) => {
+      setCurrentUserName(profile?.fullName ?? '');
+    });
+
+    return unsubscribe;
+  }, [user]);
 
   React.useEffect(() => {
     return () => {
@@ -189,15 +213,23 @@ export default function HomeScreen() {
     inputRange: [0, 1],
     outputRange: ['0deg', '360deg'],
   });
+  const navigationBottom = Math.max(insets.bottom + 12, 34);
+  const bottomLift = navigationBottom - 34;
+  const noticeBottom = 108 + bottomLift;
+  const heroBottomMargin = 138 + bottomLift;
+  const firstName = currentUserName.trim().split(/\s+/)[0] ?? '';
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <View style={styles.brandRow}>
-          <View style={styles.brandIcon}>
-            <MaterialCommunityIcons name="home-city-outline" size={18} color="#FFFFFF" />
+        <View>
+          <View style={styles.brandRow}>
+            <View style={styles.brandIcon}>
+              <MaterialCommunityIcons name="home-city-outline" size={18} color="#FFFFFF" />
+            </View>
+            <Text style={styles.brandText}>StayMate</Text>
           </View>
-          <Text style={styles.brandText}>StayMate</Text>
+          {firstName ? <Text style={styles.welcomeText}>{`Hi, ${firstName}`}</Text> : null}
         </View>
 
         <View style={styles.headerActions}>
@@ -211,26 +243,26 @@ export default function HomeScreen() {
       </View>
 
       <ProfileHeroCard
-        style={styles.heroCard}
+        style={[styles.heroCard, { marginBottom: heroBottomMargin }]}
         profiles={visibleProfiles}
         onDecision={(profile, decision) => handleDecision(profile, decision)}
       />
 
       {isRefreshing ? (
-        <View style={[styles.noticeBubble, styles.refreshBubble]}>
+        <View style={[styles.noticeBubble, styles.refreshBubble, { bottom: noticeBottom }]}>
           <Animated.View style={{ transform: [{ rotate: refreshRotation }] }}>
             <MaterialCommunityIcons name="refresh" size={18} color="#D5FF78" />
           </Animated.View>
           <Text style={styles.noticeText}>Refreshing feed...</Text>
         </View>
       ) : decisionNotice ? (
-        <View style={styles.noticeBubble}>
+        <View style={[styles.noticeBubble, { bottom: noticeBottom }]}>
           <Text style={styles.noticeText}>{decisionNotice}</Text>
         </View>
       ) : null}
 
       <BottomNavigation
-        style={styles.navigation}
+        style={[styles.navigation, { bottom: navigationBottom }]}
         activeIndex={0}
         onChange={(index) => {
           if (index === 0) {
@@ -290,6 +322,14 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 42,
     fontFamily: 'Prompt-Bold',
+  },
+  welcomeText: {
+    marginTop: -4,
+    color: '#DCCAFF',
+    fontSize: 12,
+    lineHeight: 16,
+    fontFamily: 'Prompt-SemiBold',
+    paddingLeft: 36,
   },
   headerActions: {
     flexDirection: 'row',

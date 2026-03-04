@@ -4,10 +4,77 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useAuthStore } from '@/context/auth-store';
+import { useOnboardingProfileStore } from '@/context/onboarding-profile-store';
+import { upsertUserProfile } from '@/lib/user-profile';
+import type { UserProfileInput } from '@/types/user-profile';
+
 const QUESTION_STEPS = 7;
 
 export default function ReadyQuestionScreen() {
   const router = useRouter();
+  const { user } = useAuthStore();
+  const { draft, resetDraft } = useOnboardingProfileStore();
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+
+  const buildProfilePayload = React.useCallback((): UserProfileInput | null => {
+    const email = draft.email || user?.email || '';
+    if (!email || !draft.fullName || !draft.dateOfBirth || !draft.gender) {
+      return null;
+    }
+    if (typeof draft.age !== 'number' || draft.age <= 0 || draft.hasAccommodation === null) {
+      return null;
+    }
+    if (!draft.phoneNumber || !draft.whatsAppNumber) {
+      return null;
+    }
+
+    return {
+      email,
+      fullName: draft.fullName,
+      age: draft.age,
+      dateOfBirth: draft.dateOfBirth,
+      gender: draft.gender,
+      phoneNumber: draft.phoneNumber,
+      whatsAppNumber: draft.whatsAppNumber,
+      accommodation: draft.accommodation,
+      preferredRoommateGender: draft.preferredRoommateGender,
+      budgetRange: draft.budgetRange,
+      hasAccommodation: draft.hasAccommodation,
+      lifestyleInterests: draft.lifestyleInterests,
+      hobbyInterests: draft.hobbyInterests,
+    };
+  }, [draft, user?.email]);
+
+  const handleSaveProfile = React.useCallback(() => {
+    if (isSubmitting) return;
+    if (!user) {
+      setErrorMessage('Session expired. Please sign in again.');
+      return;
+    }
+
+    const payload = buildProfilePayload();
+    if (!payload) {
+      setErrorMessage('Your onboarding data is incomplete. Please go back and complete all fields.');
+      return;
+    }
+
+    setErrorMessage(null);
+    setIsSubmitting(true);
+
+    void (async () => {
+      try {
+        await upsertUserProfile(user.uid, payload);
+        resetDraft();
+        router.replace('/home');
+      } catch {
+        setErrorMessage('Unable to save your profile right now. Please try again.');
+      } finally {
+        setIsSubmitting(false);
+      }
+    })();
+  }, [buildProfilePayload, isSubmitting, resetDraft, router, user]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -40,10 +107,17 @@ export default function ReadyQuestionScreen() {
           </Text>
         </View>
 
+        {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+
         <View style={styles.bottomSpacer} />
 
-        <Pressable style={styles.confirmButton} onPress={() => router.replace('/home')}>
-          <Text style={styles.confirmButtonText}>Go to Home</Text>
+        <Pressable
+          style={[styles.confirmButton, isSubmitting ? styles.confirmButtonDisabled : null]}
+          onPress={handleSaveProfile}
+          disabled={isSubmitting}>
+          <Text style={styles.confirmButtonText}>
+            {isSubmitting ? 'Saving profile...' : 'Go to Home'}
+          </Text>
         </Pressable>
       </View>
     </SafeAreaView>
@@ -141,6 +215,15 @@ const styles = StyleSheet.create({
   bottomSpacer: {
     flex: 1,
   },
+  errorText: {
+    marginTop: 10,
+    color: '#FFB8C8',
+    fontSize: 12,
+    lineHeight: 17,
+    fontFamily: 'Prompt-SemiBold',
+    textAlign: 'center',
+    paddingHorizontal: 12,
+  },
   confirmButton: {
     height: 70,
     borderRadius: 35,
@@ -148,6 +231,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 10,
+  },
+  confirmButtonDisabled: {
+    opacity: 0.75,
   },
   confirmButtonText: {
     color: '#1A123A',

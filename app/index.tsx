@@ -3,6 +3,10 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SvgXml } from 'react-native-svg';
 
+import { useAuthStore } from '@/context/auth-store';
+import { useOnboardingProfileStore } from '@/context/onboarding-profile-store';
+import { getUserProfile } from '@/lib/user-profile';
+
 const LAUNCH_LOGO_XML = `
 <svg width="160" height="154" viewBox="0 0 160 154" fill="none" xmlns="http://www.w3.org/2000/svg">
   <rect width="160" height="154" rx="36" fill="#30186F"/>
@@ -14,14 +18,56 @@ const LAUNCH_LOGO_XML = `
 
 export default function LaunchScreen() {
   const router = useRouter();
+  const { user, loading } = useAuthStore();
+  const { resetDraft, setAccountEmail } = useOnboardingProfileStore();
+  const hasNavigatedRef = React.useRef(false);
 
   React.useEffect(() => {
+    if (loading || hasNavigatedRef.current) {
+      return;
+    }
+
+    let isCancelled = false;
     const timer = setTimeout(() => {
-      router.replace('/start');
+      void (async () => {
+        if (!user) {
+          if (!isCancelled) {
+            hasNavigatedRef.current = true;
+            router.replace('/start');
+          }
+          return;
+        }
+
+        try {
+          const existingProfile = await getUserProfile(user.uid);
+          if (isCancelled) return;
+
+          if (existingProfile) {
+            hasNavigatedRef.current = true;
+            router.replace('/home');
+            return;
+          }
+
+          resetDraft();
+          if (user.email) {
+            setAccountEmail(user.email);
+          }
+          hasNavigatedRef.current = true;
+          router.replace('/question-basic-info');
+        } catch {
+          if (!isCancelled) {
+            hasNavigatedRef.current = true;
+            router.replace('/start');
+          }
+        }
+      })();
     }, 900);
 
-    return () => clearTimeout(timer);
-  }, [router]);
+    return () => {
+      isCancelled = true;
+      clearTimeout(timer);
+    };
+  }, [loading, resetDraft, router, setAccountEmail, user]);
 
   return (
     <View style={styles.container}>

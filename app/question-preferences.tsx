@@ -1,50 +1,150 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  PanResponder,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type LayoutChangeEvent,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-type Option = {
-  key: string;
+import { useOnboardingProfileStore } from '@/context/onboarding-profile-store';
+import {
+  type AccommodationType,
+  type BudgetRange,
+  type RoommateGenderPreference,
+} from '@/types/user-profile';
+
+type Option<T extends string> = {
+  key: T;
   label: string;
 };
 
-const QUESTION_STEPS = 7;
+type RangeValue = BudgetRange;
+type ActiveThumb = 'lower' | 'upper';
 
-const accommodationOptions: Option[] = [
+const QUESTION_STEPS = 7;
+const BUDGET_MIN = 1000;
+const BUDGET_MAX = 10000;
+const BUDGET_STEP = 100;
+const INITIAL_BUDGET_RANGE: RangeValue = [5000, 8000];
+const THUMB_SIZE = 32;
+
+const accommodationOptions: Option<AccommodationType>[] = [
   { key: 'bedsitter', label: 'Bedsitter' },
   { key: 'studio', label: 'Studio' },
   { key: 'one-bedroom', label: 'One Bedroom' },
 ];
 
-const roommateGenderOptions: Option[] = [
+const roommateGenderOptions: Option<RoommateGenderPreference>[] = [
   { key: 'women', label: 'Women' },
   { key: 'men', label: 'Men' },
   { key: 'any', label: 'Any' },
 ];
 
-const userGenderOptions: Option[] = [
-  { key: 'female', label: 'Female' },
-  { key: 'male', label: 'Male' },
-  { key: 'non-binary', label: 'Non-binary' },
-];
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(value, max));
+}
 
-const budgetOptions: Option[] = [
-  { key: '3k-5k', label: 'KES 3k-5k' },
-  { key: '5k-8k', label: 'KES 5k-8k' },
-  { key: '8k-12k', label: 'KES 8k-12k' },
-];
+function RangeSlider({
+  min,
+  max,
+  step,
+  value,
+  onChange,
+}: {
+  min: number;
+  max: number;
+  step: number;
+  value: RangeValue;
+  onChange: (next: RangeValue) => void;
+}) {
+  const [trackWidth, setTrackWidth] = React.useState(0);
+  const activeThumbRef = React.useRef<ActiveThumb>('lower');
 
-function OptionRow({
+  const [lowerValue, upperValue] = value;
+  const range = max - min;
+  const lowerX = trackWidth > 0 ? ((lowerValue - min) / range) * trackWidth : 0;
+  const upperX = trackWidth > 0 ? ((upperValue - min) / range) * trackWidth : 0;
+  const lowerThumbLeft = clamp(lowerX - THUMB_SIZE / 2, 0, Math.max(trackWidth - THUMB_SIZE, 0));
+  const upperThumbLeft = clamp(upperX - THUMB_SIZE / 2, 0, Math.max(trackWidth - THUMB_SIZE, 0));
+
+  const updateValueFromX = React.useCallback(
+    (x: number, activeThumb: ActiveThumb) => {
+      if (trackWidth <= 0) return;
+
+      const ratio = clamp(x / trackWidth, 0, 1);
+      const raw = min + ratio * range;
+      const snapped = clamp(min + Math.round((raw - min) / step) * step, min, max);
+
+      if (activeThumb === 'lower') {
+        const nextLower = Math.min(snapped, upperValue - step);
+        onChange([nextLower, upperValue]);
+      } else {
+        const nextUpper = Math.max(snapped, lowerValue + step);
+        onChange([lowerValue, nextUpper]);
+      }
+    },
+    [lowerValue, max, min, onChange, range, step, trackWidth, upperValue]
+  );
+
+  const onTrackLayout = (event: LayoutChangeEvent) => {
+    setTrackWidth(event.nativeEvent.layout.width);
+  };
+
+  const panResponder = React.useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: (event) => {
+          const x = event.nativeEvent.locationX;
+          const lowerDistance = Math.abs(x - lowerX);
+          const upperDistance = Math.abs(x - upperX);
+          const thumb: ActiveThumb = lowerDistance <= upperDistance ? 'lower' : 'upper';
+
+          activeThumbRef.current = thumb;
+          updateValueFromX(x, thumb);
+        },
+        onPanResponderMove: (event) => {
+          updateValueFromX(event.nativeEvent.locationX, activeThumbRef.current);
+        },
+      }),
+    [lowerX, updateValueFromX, upperX]
+  );
+
+  return (
+    <View style={styles.sliderRoot} onLayout={onTrackLayout}>
+      <View style={styles.sliderTrack} />
+      <View
+        style={[
+          styles.sliderFill,
+          {
+            left: lowerX,
+            width: Math.max(upperX - lowerX, 0),
+          },
+        ]}
+      />
+      <View style={[styles.sliderThumb, { left: lowerThumbLeft }]} />
+      <View style={[styles.sliderThumb, { left: upperThumbLeft }]} />
+      <View style={styles.sliderTouchLayer} {...panResponder.panHandlers} />
+    </View>
+  );
+}
+
+function OptionRow<T extends string>({
   title,
   options,
   value,
   onChange,
 }: {
   title: string;
-  options: Option[];
-  value: string;
-  onChange: (key: string) => void;
+  options: Option<T>[];
+  value: T;
+  onChange: (key: T) => void;
 }) {
   return (
     <View style={styles.optionSection}>
@@ -74,10 +174,23 @@ function OptionRow({
 
 export default function PreferencesQuestionScreen() {
   const router = useRouter();
-  const [accommodation, setAccommodation] = React.useState('studio');
-  const [userGender, setUserGender] = React.useState('female');
-  const [roommateGender, setRoommateGender] = React.useState('any');
-  const [budgetRange, setBudgetRange] = React.useState('5k-8k');
+  const { draft, setPreferences } = useOnboardingProfileStore();
+  const [accommodation, setAccommodation] = React.useState<AccommodationType>(draft.accommodation);
+  const [roommateGender, setRoommateGender] = React.useState<RoommateGenderPreference>(
+    draft.preferredRoommateGender
+  );
+  const [budgetRange, setBudgetRange] = React.useState<RangeValue>(
+    draft.budgetRange ?? INITIAL_BUDGET_RANGE
+  );
+
+  const handleConfirm = React.useCallback(() => {
+    setPreferences({
+      accommodation,
+      preferredRoommateGender: roommateGender,
+      budgetRange,
+    });
+    router.push('/question-personality');
+  }, [accommodation, budgetRange, roommateGender, router, setPreferences]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -108,8 +221,6 @@ export default function PreferencesQuestionScreen() {
             onChange={setAccommodation}
           />
 
-          <OptionRow title="Your gender" options={userGenderOptions} value={userGender} onChange={setUserGender} />
-
           <OptionRow
             title="Preferred roommate gender"
             options={roommateGenderOptions}
@@ -117,12 +228,24 @@ export default function PreferencesQuestionScreen() {
             onChange={setRoommateGender}
           />
 
-          <OptionRow title="Budget range" options={budgetOptions} value={budgetRange} onChange={setBudgetRange} />
+          <View style={styles.optionSection}>
+            <View style={styles.budgetLabelRow}>
+              <Text style={styles.optionTitle}>Budget range</Text>
+              <Text style={styles.budgetValueText}>{`KES ${budgetRange[0]} - ${budgetRange[1]}`}</Text>
+            </View>
+            <RangeSlider
+              min={BUDGET_MIN}
+              max={BUDGET_MAX}
+              step={BUDGET_STEP}
+              value={budgetRange}
+              onChange={setBudgetRange}
+            />
+          </View>
         </View>
 
         <View style={styles.bottomSpacer} />
 
-        <Pressable style={styles.confirmButton} onPress={() => router.push('/question-personality')}>
+        <Pressable style={styles.confirmButton} onPress={handleConfirm}>
           <Text style={styles.confirmButtonText}>Confirm</Text>
         </Pressable>
       </View>
@@ -197,10 +320,21 @@ const styles = StyleSheet.create({
   optionSection: {
     gap: 8,
   },
+  budgetLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   optionTitle: {
     color: '#FFFFFF',
     fontSize: 14,
     lineHeight: 18,
+    fontFamily: 'Prompt-SemiBold',
+  },
+  budgetValueText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    lineHeight: 17,
     fontFamily: 'Prompt-SemiBold',
   },
   optionGrid: {
@@ -233,6 +367,36 @@ const styles = StyleSheet.create({
   },
   optionChipTextInactive: {
     color: '#CFFB75',
+  },
+  sliderRoot: {
+    height: 32,
+    justifyContent: 'center',
+    position: 'relative',
+    marginTop: 4,
+  },
+  sliderTrack: {
+    height: 4,
+    backgroundColor: 'rgba(188, 204, 223, 0.5)',
+    borderRadius: 2,
+    width: '100%',
+  },
+  sliderFill: {
+    position: 'absolute',
+    top: 14,
+    height: 4,
+    backgroundColor: '#CCFA72',
+    borderRadius: 2,
+  },
+  sliderThumb: {
+    position: 'absolute',
+    top: 0,
+    width: THUMB_SIZE,
+    height: THUMB_SIZE,
+    borderRadius: THUMB_SIZE / 2,
+    backgroundColor: '#CCFA72',
+  },
+  sliderTouchLayer: {
+    ...StyleSheet.absoluteFillObject,
   },
   bottomSpacer: {
     flex: 1,

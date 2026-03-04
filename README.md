@@ -42,6 +42,34 @@ To learn more about developing your project with Expo, look at the following res
 - [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
 - [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
 
+## Firebase setup
+
+1. Install Firebase dependencies:
+
+   ```bash
+   npm install firebase @react-native-async-storage/async-storage
+   ```
+
+2. Copy `.env.example` to `.env` (or export matching `EXPO_PUBLIC_FIREBASE_*` variables).
+
+3. Android config:
+   `app.json` already points to `./google-services.json` via `android.googleServicesFile`.
+
+4. Use Firebase services anywhere in the app:
+
+   ```ts
+   import { auth, db, storage, getFirebaseAnalytics } from '@/lib/firebase';
+   ```
+
+   On web, initialize Analytics when needed:
+
+   ```ts
+   await getFirebaseAnalytics();
+   ```
+
+5. If Android native Firebase features fail, confirm `android.package` in `app.json`
+   matches `client[0].client_info.android_client_info.package_name` in `google-services.json`.
+
 ## Join the community
 
 Join our community of developers creating universal apps.

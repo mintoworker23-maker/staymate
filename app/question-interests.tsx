@@ -4,6 +4,8 @@ import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useOnboardingProfileStore } from '@/context/onboarding-profile-store';
+
 const QUESTION_STEPS = 7;
 
 type ChipState = {
@@ -42,6 +44,16 @@ const initialHobbyOptions: ChipState[] = [
   { id: 's-12', label: 'Tech', selected: true },
 ];
 
+function hydrateSelections(options: ChipState[], selectedLabels: string[]) {
+  if (!selectedLabels.length) return options;
+
+  const selectedSet = new Set(selectedLabels);
+  return options.map((option) => ({
+    ...option,
+    selected: selectedSet.has(option.label),
+  }));
+}
+
 function InterestSection({
   title,
   items,
@@ -72,8 +84,13 @@ function InterestSection({
 
 export default function InterestsQuestionScreen() {
   const router = useRouter();
-  const [lifestyleInterests, setLifestyleInterests] = React.useState<ChipState[]>(initialLifestyleOptions);
-  const [hobbyInterests, setHobbyInterests] = React.useState<ChipState[]>(initialHobbyOptions);
+  const { draft, setInterests } = useOnboardingProfileStore();
+  const [lifestyleInterests, setLifestyleInterests] = React.useState<ChipState[]>(() =>
+    hydrateSelections(initialLifestyleOptions, draft.lifestyleInterests)
+  );
+  const [hobbyInterests, setHobbyInterests] = React.useState<ChipState[]>(() =>
+    hydrateSelections(initialHobbyOptions, draft.hobbyInterests)
+  );
 
   const toggleLifestyleInterest = React.useCallback((id: string) => {
     setLifestyleInterests((prev) =>
@@ -86,6 +103,16 @@ export default function InterestsQuestionScreen() {
       prev.map((item) => (item.id === id ? { ...item, selected: !item.selected } : item))
     );
   }, []);
+
+  const handleConfirm = React.useCallback(() => {
+    setInterests({
+      lifestyleInterests: lifestyleInterests
+        .filter((item) => item.selected)
+        .map((item) => item.label),
+      hobbyInterests: hobbyInterests.filter((item) => item.selected).map((item) => item.label),
+    });
+    router.push('/question-ready');
+  }, [hobbyInterests, lifestyleInterests, router, setInterests]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -122,7 +149,7 @@ export default function InterestsQuestionScreen() {
           <InterestSection title="Sports & hobbies" items={hobbyInterests} onToggle={toggleHobbyInterest} />
         </ScrollView>
 
-        <Pressable style={styles.confirmButton} onPress={() => router.push('/question-ready')}>
+        <Pressable style={styles.confirmButton} onPress={handleConfirm}>
           <Text style={styles.confirmButtonText}>Confirm</Text>
         </Pressable>
       </View>

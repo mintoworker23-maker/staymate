@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BrandedPromptModal } from '@/components/branded-prompt-modal';
 import { BottomNavigation } from '@/components/bottom-navigation';
@@ -87,6 +87,7 @@ function ChatRow({
 
 export default function ChatScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { conversations, deleteConversation } = useChatStore();
   const [selectedChatIds, setSelectedChatIds] = React.useState<string[]>([]);
   const [pendingDeleteChatIds, setPendingDeleteChatIds] = React.useState<string[] | null>(null);
@@ -145,6 +146,10 @@ export default function ChatScreen() {
   const deleteSelectedChats = React.useCallback(() => {
     promptDeleteChats(selectedChatIds);
   }, [promptDeleteChats, selectedChatIds]);
+  const navigationBottom = Math.max(insets.bottom + 12, 34);
+  const bottomLift = navigationBottom - 34;
+  const listBottomPadding = 145 + bottomLift;
+  const selectionBarBottom = 116 + bottomLift;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -190,7 +195,7 @@ export default function ChatScreen() {
           />
         )}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: listBottomPadding }]}
         ListEmptyComponent={
           <Text style={styles.emptyText}>
             {searchQuery.trim().length > 0 ? 'No chats found.' : 'No chats yet.'}
@@ -199,7 +204,7 @@ export default function ChatScreen() {
       />
 
       {selectedChatIds.length > 0 ? (
-        <View style={styles.selectionBar}>
+        <View style={[styles.selectionBar, { bottom: selectionBarBottom }]}>
           <View style={styles.selectionMeta}>
             <MaterialCommunityIcons name="check-circle-outline" size={20} color="#D8CBFF" />
             <Text style={styles.selectionText}>{`${selectedChatIds.length} selected`}</Text>
@@ -218,7 +223,7 @@ export default function ChatScreen() {
       ) : null}
 
       <BottomNavigation
-        style={styles.navigation}
+        style={[styles.navigation, { bottom: navigationBottom }]}
         activeIndex={2}
         onChange={(index) => {
           if (index === 0) {

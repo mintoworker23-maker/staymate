@@ -12,6 +12,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { getLastLoginEmail, saveLastLoginEmail } from '@/lib/auth-session';
+
 const personalDomains = new Set(['gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com', 'icloud.com']);
 const STUDENT_EMAIL_PATTERN = /\.(edu|ac\.[a-z]{2,})$/i;
 
@@ -33,6 +35,25 @@ export default function UniversityLoginScreen() {
   const [agreedToTerms, setAgreedToTerms] = React.useState(true);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
 
+  React.useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const rememberedEmail = await getLastLoginEmail();
+        if (!cancelled && rememberedEmail) {
+          setEmail(rememberedEmail);
+        }
+      } catch {
+        // Ignore local storage failures and continue with manual input.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const handleContinue = React.useCallback(() => {
     if (!isUniversityEmail(email)) {
       setErrorMessage('Enter a valid university email to continue.');
@@ -46,6 +67,7 @@ export default function UniversityLoginScreen() {
 
     const normalizedEmail = email.trim().toLowerCase();
     setErrorMessage(null);
+    void saveLastLoginEmail(normalizedEmail);
     router.push({ pathname: '/university-code', params: { email: normalizedEmail } });
   }, [agreedToTerms, email, router]);
 
