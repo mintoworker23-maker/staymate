@@ -5,6 +5,7 @@ import React from 'react';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { MediaReviewModal } from '@/components/media-review-modal';
 import { useAuthStore } from '@/context/auth-store';
 import { useOnboardingProfileStore } from '@/context/onboarding-profile-store';
 import { goBackOrReplace } from '@/lib/navigation';
@@ -31,35 +32,27 @@ function getPhotoSaveErrorMessage(error: unknown) {
   const lowerDetail = normalizedDetail.toLowerCase();
 
   if (code === 'cloudinary/missing-config') {
-    return 'Cloudinary is not configured. Add EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME and EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET.';
+    return 'Photo upload is temporarily unavailable. Please try again in a few minutes.';
   }
 
   if (code === 'cloudinary/upload-failed' || code === 'cloudinary/invalid-response') {
-    return normalizedDetail
-      ? `Cloudinary upload failed: ${normalizedDetail}`
-      : 'Cloudinary upload failed. Check your upload preset and internet connection.';
+    return 'We could not upload your photos right now. Check your internet and try again.';
   }
 
   if (code === 'permission-denied') {
-    return 'Firebase denied saving profile photos. Update Firestore rules to allow the signed-in user to update their own users/{uid} doc.';
+    return 'We could not save your photos right now. Please sign in again and try once more.';
   }
 
   if (code === 'unavailable') {
-    return 'Network issue while uploading photos. Please check internet and try again.';
+    return 'Connection issue while uploading photos. Please check your internet and try again.';
   }
 
   if (code === 'invalid-argument' || lowerDetail.includes('unsupported field value')) {
-    return normalizedDetail
-      ? `Profile payload is invalid: ${normalizedDetail}`
-      : 'Profile data is invalid for Firestore. Please review onboarding inputs and try again.';
+    return 'One of the selected photos could not be processed. Please choose it again and retry.';
   }
 
   if (lowerDetail.includes('network request failed')) {
-    return 'Network request failed while uploading photos. Check internet, then restart Expo with `npx expo start -c` and try again.';
-  }
-
-  if (normalizedDetail) {
-    return `Unable to save photos: ${normalizedDetail}`;
+    return 'You seem to be offline. Connect to the internet and try again.';
   }
 
   return 'Unable to save photos right now. Please try again.';
@@ -79,6 +72,8 @@ export default function PhotoSetupQuestionScreen() {
   const [imageSlots, setImageSlots] = React.useState<(string | null)[]>(buildEmptySlots());
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+  const [reviewingSlotIndex, setReviewingSlotIndex] = React.useState<number | null>(null);
+  const [reviewingImageUri, setReviewingImageUri] = React.useState<string | null>(null);
 
   const selectedImageUris = React.useMemo(
     () => imageSlots.filter((item): item is string => Boolean(item)),
@@ -94,18 +89,15 @@ export default function PhotoSetupQuestionScreen() {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      allowsEditing: true,
+      allowsEditing: false,
       quality: 0.9,
     });
 
     if (result.canceled || !result.assets?.length) return;
 
     const selected = result.assets[0];
-    setImageSlots((prev) => {
-      const next = [...prev];
-      next[slotIndex] = selected.uri;
-      return next;
-    });
+    setReviewingSlotIndex(slotIndex);
+    setReviewingImageUri(selected.uri);
     if (errorMessage) setErrorMessage(null);
   }, [errorMessage]);
 
@@ -270,6 +262,28 @@ export default function PhotoSetupQuestionScreen() {
           <Text style={styles.confirmButtonText}>{isSubmitting ? 'Uploading photos...' : 'Finish setup'}</Text>
         </Pressable>
       </View>
+
+      <MediaReviewModal
+        visible={Boolean(reviewingImageUri)}
+        uri={reviewingImageUri}
+        title="Review your profile photo"
+        confirmLabel="Save photo"
+        onClose={() => {
+          setReviewingImageUri(null);
+          setReviewingSlotIndex(null);
+        }}
+        onConfirm={(uri) => {
+          if (reviewingSlotIndex === null) return;
+
+          setImageSlots((prev) => {
+            const next = [...prev];
+            next[reviewingSlotIndex] = uri;
+            return next;
+          });
+          setReviewingImageUri(null);
+          setReviewingSlotIndex(null);
+        }}
+      />
     </SafeAreaView>
   );
 }
