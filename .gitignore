@@ -42,7 +42,6 @@ app-example
 /ios
 /android
 .env.example
-lib/firebase.ts
 .env
 
 #firebase contents
@@ -51,3 +50,5 @@ lib/firebase.ts
 firebase.json
 firestore.rules
 firestore.indexes.json
+
+staymate-daec2-firebase-adminsdk-fbsvc-02de796623.json
