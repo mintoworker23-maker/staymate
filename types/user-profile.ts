@@ -9,16 +9,28 @@ export type UserProfile = {
   uid: string;
   email: string;
   fullName: string;
+  bio: string;
+  isOnline: boolean;
   age: number;
   dateOfBirth: string;
   gender: UserGender;
   phoneNumber: string;
   whatsAppNumber: string;
+  isVerified: boolean;
   accommodation: AccommodationType;
   preferredRoommateGender: RoommateGenderPreference;
   roommateAccommodationPreference: RoommateAccommodationPreference;
   photoUrls: string[];
   budgetRange: BudgetRange;
+  institutionName: string;
+  institutionKey: string;
+  campus: string;
+  town: string;
+  townKey: string;
+  estate: string;
+  locationLat: number | null;
+  locationLng: number | null;
+  locationRadiusKm: number;
   hasAccommodation: boolean;
   lifestyleInterests: string[];
   hobbyInterests: string[];
@@ -37,11 +49,21 @@ export type OnboardingDraft = {
   gender: UserGender | null;
   phoneNumber: string;
   whatsAppNumber: string;
+  isVerified: boolean;
   accommodation: AccommodationType;
   preferredRoommateGender: RoommateGenderPreference;
   roommateAccommodationPreference: RoommateAccommodationPreference | null;
   hasAccommodation: boolean | null;
   budgetRange: BudgetRange;
+  institutionName: string;
+  institutionKey: string;
+  campus: string;
+  town: string;
+  townKey: string;
+  estate: string;
+  locationLat: number | null;
+  locationLng: number | null;
+  locationRadiusKm: number;
   lifestyleInterests: string[];
   hobbyInterests: string[];
 };
@@ -54,11 +76,21 @@ export const DEFAULT_ONBOARDING_DRAFT: OnboardingDraft = {
   gender: null,
   phoneNumber: '',
   whatsAppNumber: '',
+  isVerified: false,
   accommodation: 'studio',
   preferredRoommateGender: 'any',
   roommateAccommodationPreference: null,
   hasAccommodation: null,
   budgetRange: [5000, 8000],
+  institutionName: '',
+  institutionKey: '',
+  campus: '',
+  town: '',
+  townKey: '',
+  estate: '',
+  locationLat: null,
+  locationLng: null,
+  locationRadiusKm: 8,
   lifestyleInterests: [],
   hobbyInterests: [],
 };

@@ -20,6 +20,7 @@ import {
   sendPasswordReset,
 } from '@/lib/auth';
 import { getLastLoginEmail, saveLastLoginEmail } from '@/lib/auth-session';
+import { goBackOrReplace } from '@/lib/navigation';
 import {
   createInitialUserProfile,
   getUserProfile,
@@ -70,6 +71,9 @@ async function getUserProfileWithTimeout(uid: string, timeoutMs: number) {
 
 export default function UniversityCodeScreen() {
   const router = useRouter();
+  const handleBackPress = React.useCallback(() => {
+    goBackOrReplace(router, '/start');
+  }, [router]);
   const { resetDraft, setAccountEmail } = useOnboardingProfileStore();
   const params = useLocalSearchParams<{ email?: string; mode?: string }>();
   const paramEmail = typeof params.email === 'string' ? params.email : '';
@@ -287,7 +291,7 @@ export default function UniversityCodeScreen() {
         style={styles.contentWrap}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.headerRow}>
-          <Pressable style={styles.backButton} onPress={() => router.back()}>
+          <Pressable style={styles.backButton} onPress={handleBackPress}>
             <MaterialCommunityIcons name="arrow-left" size={28} color="#FFFFFF" />
           </Pressable>
           <Text style={styles.headerTitle}>{isLoginMode ? 'Login' : 'Create Password'}</Text>

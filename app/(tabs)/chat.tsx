@@ -1,6 +1,7 @@
 import React from 'react';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useRouter } from 'expo-router';
+import type { FirestoreError } from 'firebase/firestore';
 import {
   FlatList,
   Image,
@@ -17,7 +18,11 @@ import { BrandedPromptModal } from '@/components/branded-prompt-modal';
 import { BottomNavigation } from '@/components/bottom-navigation';
 import { ExpandingSearch } from '@/components/expanding-search';
 import { type ChatConversation } from '@/data/chats';
+import { useAuthStore } from '@/context/auth-store';
 import { useChatStore } from '@/context/chat-store';
+import { useMatchRequestStore } from '@/context/match-request-store';
+import { isDiscoverableProfile, mapUserProfileToMatchPerson } from '@/lib/discovery-people';
+import { subscribeToDiscoverUserProfiles } from '@/lib/user-profile';
 
 const chatTags = [
   { key: 'all', label: 'All Chats' },
@@ -69,7 +74,12 @@ function ChatRow({
         delayLongPress={250}>
         <Image source={item.avatar} style={styles.avatar} />
         <View style={styles.chatMeta}>
-          <Text style={styles.chatName}>{`${item.name}, ${item.age}`}</Text>
+          <View style={styles.chatNameRow}>
+            <Text style={styles.chatName}>{`${item.name}, ${item.age}`}</Text>
+            {item.isVerified ? (
+              <MaterialCommunityIcons name="check-decagram" size={18} color="#F6D84E" />
+            ) : null}
+          </View>
           <Text style={styles.chatPreview}>{preview}</Text>
         </View>
         <View style={styles.rowRight}>
@@ -88,11 +98,62 @@ function ChatRow({
 export default function ChatScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { conversations, deleteConversation } = useChatStore();
+  const { user } = useAuthStore();
+  const { incomingCount } = useMatchRequestStore();
+  const { conversations, deleteConversation, syncConversationsWithProfiles, totalUnreadCount } =
+    useChatStore();
   const [selectedChatIds, setSelectedChatIds] = React.useState<string[]>([]);
   const [pendingDeleteChatIds, setPendingDeleteChatIds] = React.useState<string[] | null>(null);
   const [activeTag, setActiveTag] = React.useState<ChatTag>('all');
   const [searchQuery, setSearchQuery] = React.useState('');
+  const [syncErrorMessage, setSyncErrorMessage] = React.useState<string | null>(null);
+
+  const handleProfileSyncError = React.useCallback((error: FirestoreError) => {
+    if (error.code === 'permission-denied') {
+      setSyncErrorMessage(
+        'Unable to sync chats with latest users. Firestore read permission is missing.'
+      );
+      return;
+    }
+
+    setSyncErrorMessage('Unable to sync chats right now. Please try again.');
+  }, []);
+
+  React.useEffect(() => {
+    if (!user) {
+      setSyncErrorMessage(null);
+      return;
+    }
+
+    const unsubscribe = subscribeToDiscoverUserProfiles(
+      user.uid,
+      (profilesFromDb) => {
+        const activeProfiles = profilesFromDb
+          .filter(isDiscoverableProfile)
+          .map((profile) => {
+            const person = mapUserProfileToMatchPerson(profile);
+            const updatedAtMs = Date.parse(profile.updatedAt);
+            const isRecentlyActive =
+              Number.isFinite(updatedAtMs) && Date.now() - updatedAtMs <= 150_000;
+            return {
+              matchPersonId: person.id,
+              name: person.name,
+              age: person.age,
+              isVerified: profile.isVerified,
+              avatar: person.image,
+              online: profile.isOnline && isRecentlyActive,
+              whatsappNumber: profile.whatsAppNumber.trim() || profile.phoneNumber.trim() || '',
+            };
+          });
+
+        syncConversationsWithProfiles(activeProfiles);
+        setSyncErrorMessage(null);
+      },
+      handleProfileSyncError
+    );
+
+    return unsubscribe;
+  }, [handleProfileSyncError, syncConversationsWithProfiles, user]);
 
   const filteredConversations = React.useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -198,7 +259,8 @@ export default function ChatScreen() {
         contentContainerStyle={[styles.listContent, { paddingBottom: listBottomPadding }]}
         ListEmptyComponent={
           <Text style={styles.emptyText}>
-            {searchQuery.trim().length > 0 ? 'No chats found.' : 'No chats yet.'}
+            {syncErrorMessage ??
+              (searchQuery.trim().length > 0 ? 'No chats found.' : 'No chats yet.')}
           </Text>
         }
       />
@@ -239,8 +301,8 @@ export default function ChatScreen() {
         items={[
           { icon: 'home' },
           { icon: 'target' },
-          { icon: 'chat-outline' },
-          { icon: 'handshake-outline' },
+          { icon: 'chat-outline', badgeCount: totalUnreadCount },
+          { icon: 'handshake-outline', badgeCount: incomingCount },
         ]}
       />
 
@@ -368,6 +430,12 @@ const styles = StyleSheet.create({
     fontSize: 20,
     lineHeight: 24,
     fontFamily: 'Prompt-Bold',
+  },
+  chatNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
   },
   chatPreview: {
     color: '#FFFFFF',

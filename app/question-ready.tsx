@@ -1,19 +1,106 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { useAuthStore } from '@/context/auth-store';
+import { useOnboardingProfileStore } from '@/context/onboarding-profile-store';
+import { normalizeLookupKey } from '@/lib/location';
+import { goBackOrReplace } from '@/lib/navigation';
+import { updateUserProfile } from '@/lib/user-profile';
 
 const QUESTION_STEPS = 7;
 
 export default function ReadyQuestionScreen() {
   const router = useRouter();
+  const { from } = useLocalSearchParams<{ from?: string | string[] }>();
+  const fromProfile = (Array.isArray(from) ? from[0] : from) === 'profile';
+  const { user } = useAuthStore();
+  const { draft, resetDraft } = useOnboardingProfileStore();
+  const [isSaving, setIsSaving] = React.useState(false);
+
+  const handleBackPress = React.useCallback(() => {
+    goBackOrReplace(router, fromProfile ? '/profile' : '/start');
+  }, [fromProfile, router]);
+
+  const handleConfirm = React.useCallback(() => {
+    if (!fromProfile) {
+      router.push('/question-photos');
+      return;
+    }
+    if (!user) {
+      goBackOrReplace(router, '/start');
+      return;
+    }
+    if (isSaving) {
+      return;
+    }
+    const normalizedAge = draft.age;
+    const normalizedGender = draft.gender;
+
+    if (
+      !draft.fullName.trim() ||
+      !draft.dateOfBirth.trim() ||
+      !normalizedGender ||
+      typeof normalizedAge !== 'number' ||
+      normalizedAge <= 0 ||
+      !draft.phoneNumber.trim() ||
+      !draft.whatsAppNumber.trim() ||
+      !draft.institutionName.trim() ||
+      !draft.town.trim()
+    ) {
+      Alert.alert(
+        'Missing details',
+        'Please complete the previous steps before saving your profile.'
+      );
+      return;
+    }
+
+    setIsSaving(true);
+    void (async () => {
+      try {
+        await updateUserProfile(user.uid, {
+          email: draft.email || user.email || '',
+          fullName: draft.fullName.trim(),
+          age: normalizedAge,
+          dateOfBirth: draft.dateOfBirth.trim(),
+          gender: normalizedGender,
+          phoneNumber: draft.phoneNumber.trim(),
+          whatsAppNumber: draft.whatsAppNumber.trim(),
+          accommodation: draft.accommodation,
+          preferredRoommateGender: draft.preferredRoommateGender,
+          roommateAccommodationPreference: draft.roommateAccommodationPreference ?? 'any',
+          budgetRange: draft.budgetRange,
+          institutionName: draft.institutionName.trim(),
+          institutionKey: draft.institutionKey || normalizeLookupKey(draft.institutionName),
+          campus: draft.campus.trim(),
+          town: draft.town.trim(),
+          townKey: draft.townKey || normalizeLookupKey(draft.town),
+          estate: draft.estate.trim(),
+          locationLat: draft.locationLat,
+          locationLng: draft.locationLng,
+          locationRadiusKm: draft.locationRadiusKm,
+          hasAccommodation: draft.hasAccommodation ?? false,
+          lifestyleInterests: draft.lifestyleInterests,
+          hobbyInterests: draft.hobbyInterests,
+          onboardingCompleted: true,
+        });
+        resetDraft();
+        router.replace('/profile');
+      } catch {
+        Alert.alert('Save failed', 'Unable to update your profile right now. Please try again.');
+      } finally {
+        setIsSaving(false);
+      }
+    })();
+  }, [draft, fromProfile, isSaving, resetDraft, router, user]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.contentWrap}>
         <View style={styles.headerRow}>
-          <Pressable style={styles.backButton} onPress={() => router.back()}>
+          <Pressable style={styles.backButton} onPress={handleBackPress}>
             <MaterialCommunityIcons name="arrow-left" size={28} color="#FFFFFF" />
           </Pressable>
           <Text style={styles.headerTitle}>Almost Done</Text>
@@ -42,8 +129,17 @@ export default function ReadyQuestionScreen() {
 
         <View style={styles.bottomSpacer} />
 
-        <Pressable style={styles.confirmButton} onPress={() => router.push('/question-photos')}>
-          <Text style={styles.confirmButtonText}>Add photos</Text>
+        <Pressable
+          style={[styles.confirmButton, isSaving ? styles.confirmButtonDisabled : null]}
+          onPress={handleConfirm}
+          disabled={isSaving}>
+          <Text style={styles.confirmButtonText}>
+            {isSaving
+              ? 'Saving...'
+              : fromProfile
+                ? 'Save profile'
+                : 'Add photos'}
+          </Text>
         </Pressable>
       </View>
     </SafeAreaView>
@@ -148,6 +244,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 10,
+  },
+  confirmButtonDisabled: {
+    opacity: 0.7,
   },
   confirmButtonText: {
     color: '#1A123A',

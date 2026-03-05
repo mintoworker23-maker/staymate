@@ -10,21 +10,14 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 
-export type RangeValue = [number, number];
+import {
+  DEFAULT_MATCH_FILTER_VALUES,
+  type MatchFilterValues,
+} from '@/lib/matchmaking';
 
-export type FilterValues = {
-  accommodation: string;
-  gender: string;
-  ageRange: RangeValue;
-  budgetRange: RangeValue;
-};
-
-export const DEFAULT_FILTER_VALUES: FilterValues = {
-  accommodation: 'single-1',
-  gender: 'women',
-  ageRange: [18, 23],
-  budgetRange: [3000, 4500],
-};
+export type FilterValues = MatchFilterValues;
+export const DEFAULT_FILTER_VALUES = DEFAULT_MATCH_FILTER_VALUES;
+export type RangeValue = FilterValues['ageRange'];
 
 type FiltersSheetProps = {
   visible: boolean;
@@ -33,21 +26,28 @@ type FiltersSheetProps = {
   onApply?: (values: FilterValues) => void;
 };
 
-type ChipOption = {
-  key: string;
+type ChipOption<T extends string = string> = {
+  key: T;
   label: string;
 };
 
-const accommodationOptions: ChipOption[] = [
-  { key: 'single-1', label: 'Single Room' },
-  { key: 'single-2', label: 'Single Room' },
-  { key: 'single-3', label: 'Single Room' },
+const accommodationOptions: ChipOption<FilterValues['accommodation']>[] = [
+  { key: 'any', label: 'Any' },
+  { key: 'bedsitter', label: 'Bedsitter' },
+  { key: 'studio', label: 'Studio' },
+  { key: 'one-bedroom', label: '1 Bedroom' },
 ];
 
-const genderOptions: ChipOption[] = [
+const genderOptions: ChipOption<FilterValues['gender']>[] = [
   { key: 'men', label: 'Men' },
   { key: 'women', label: 'Women' },
   { key: 'all', label: 'All' },
+];
+
+const locationScopeOptions: ChipOption<FilterValues['locationScope']>[] = [
+  { key: 'same-institution', label: 'My school' },
+  { key: 'same-town', label: 'My town' },
+  { key: 'anywhere', label: 'Anywhere' },
 ];
 
 type ActiveThumb = 'lower' | 'upper';
@@ -139,10 +139,15 @@ function RangeSlider({ min, max, step, value, onChange }: RangeSliderProps) {
 }
 
 export function FiltersSheet({ visible, onClose, values, onApply }: FiltersSheetProps) {
-  const [accommodation, setAccommodation] = React.useState(values?.accommodation ?? DEFAULT_FILTER_VALUES.accommodation);
+  const [accommodation, setAccommodation] = React.useState(
+    values?.accommodation ?? DEFAULT_FILTER_VALUES.accommodation
+  );
   const [gender, setGender] = React.useState(values?.gender ?? DEFAULT_FILTER_VALUES.gender);
   const [ageRange, setAgeRange] = React.useState<RangeValue>(values?.ageRange ?? DEFAULT_FILTER_VALUES.ageRange);
   const [budgetRange, setBudgetRange] = React.useState<RangeValue>(values?.budgetRange ?? DEFAULT_FILTER_VALUES.budgetRange);
+  const [locationScope, setLocationScope] = React.useState<FilterValues['locationScope']>(
+    values?.locationScope ?? DEFAULT_FILTER_VALUES.locationScope
+  );
 
   React.useEffect(() => {
     if (!visible) return;
@@ -152,6 +157,7 @@ export function FiltersSheet({ visible, onClose, values, onApply }: FiltersSheet
     setGender(incoming.gender);
     setAgeRange(incoming.ageRange);
     setBudgetRange(incoming.budgetRange);
+    setLocationScope(incoming.locationScope);
   }, [values, visible]);
 
   return (
@@ -212,6 +218,25 @@ export function FiltersSheet({ visible, onClose, values, onApply }: FiltersSheet
             </View>
 
             <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Location scope</Text>
+              <View style={styles.rowChips}>
+                {locationScopeOptions.map((option) => {
+                  const active = option.key === locationScope;
+                  return (
+                    <Pressable
+                      key={option.key}
+                      onPress={() => setLocationScope(option.key)}
+                      style={[styles.chip, active ? styles.chipActive : styles.chipOutline]}>
+                      <Text style={[styles.chipText, active ? styles.chipTextActive : styles.chipTextOutline]}>
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={styles.section}>
               <View style={styles.labelRow}>
                 <Text style={styles.sectionTitle}>Preferred age:</Text>
                 <Text style={styles.valueText}>{`${ageRange[0]}-${ageRange[1]}`}</Text>
@@ -224,7 +249,7 @@ export function FiltersSheet({ visible, onClose, values, onApply }: FiltersSheet
                 <Text style={styles.sectionTitle}>Preferred Budget:</Text>
                 <Text style={styles.valueText}>{`Kes ${budgetRange[0]} - ${budgetRange[1]}`}</Text>
               </View>
-              <RangeSlider min={1000} max={10000} step={100} value={budgetRange} onChange={setBudgetRange} />
+              <RangeSlider min={1000} max={20000} step={100} value={budgetRange} onChange={setBudgetRange} />
             </View>
 
             <Pressable
@@ -234,6 +259,7 @@ export function FiltersSheet({ visible, onClose, values, onApply }: FiltersSheet
                   gender,
                   ageRange,
                   budgetRange,
+                  locationScope,
                 });
                 onClose();
               }}
@@ -260,7 +286,7 @@ const styles = StyleSheet.create({
     maxHeight: '84%',
   },
   sheet: {
-    minHeight: 520,
+    minHeight: 590,
     backgroundColor: '#3E248A',
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
@@ -301,6 +327,7 @@ const styles = StyleSheet.create({
   rowChips: {
     flexDirection: 'row',
     gap: 8,
+    flexWrap: 'wrap',
   },
   chip: {
     borderRadius: 18,

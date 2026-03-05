@@ -1,10 +1,11 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useOnboardingProfileStore } from '@/context/onboarding-profile-store';
+import { goBackOrReplace } from '@/lib/navigation';
 import type { RoommateAccommodationPreference } from '@/types/user-profile';
 
 const QUESTION_STEPS = 7;
@@ -25,6 +26,11 @@ type OwnAccommodationStatus = (typeof ownAccommodationOptions)[number]['key'];
 
 export default function PersonalityQuestionScreen() {
   const router = useRouter();
+  const { from } = useLocalSearchParams<{ from?: string | string[] }>();
+  const fromProfile = (Array.isArray(from) ? from[0] : from) === 'profile';
+  const handleBackPress = React.useCallback(() => {
+    goBackOrReplace(router, fromProfile ? '/profile' : '/start');
+  }, [fromProfile, router]);
   const { draft, setRoommateAccommodationPreference, setHasAccommodation } = useOnboardingProfileStore();
   const [selectedStatus, setSelectedStatus] = React.useState<AccommodationStatus | null>(
     draft.roommateAccommodationPreference
@@ -38,14 +44,21 @@ export default function PersonalityQuestionScreen() {
 
     setRoommateAccommodationPreference(selectedStatus);
     setHasAccommodation(ownAccommodationStatus === 'yes');
-    router.push('/question-interests');
-  }, [ownAccommodationStatus, router, selectedStatus, setHasAccommodation, setRoommateAccommodationPreference]);
+    router.push(fromProfile ? '/question-interests?from=profile' : '/question-interests');
+  }, [
+    ownAccommodationStatus,
+    router,
+    selectedStatus,
+    setHasAccommodation,
+    setRoommateAccommodationPreference,
+    fromProfile,
+  ]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.contentWrap}>
         <View style={styles.headerRow}>
-          <Pressable style={styles.backButton} onPress={() => router.back()}>
+          <Pressable style={styles.backButton} onPress={handleBackPress}>
             <MaterialCommunityIcons name="arrow-left" size={28} color="#FFFFFF" />
           </Pressable>
           <Text style={styles.headerTitle}>Roommate preference</Text>

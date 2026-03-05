@@ -1,13 +1,25 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
-import { Animated, Easing, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Animated,
+  Easing,
+  Image,
+  type ImageSourcePropType,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MessageUserButton } from '@/components/message-user-button';
 import { useChatStore } from '@/context/chat-store';
 import { useMatchFeedStore } from '@/context/match-feed-store';
 import { matchPeople } from '@/data/people';
+import { goBackOrReplace } from '@/lib/navigation';
+import { getUserProfile } from '@/lib/user-profile';
+import type { UserProfile } from '@/types/user-profile';
 
 function getFirstName(fullName: string) {
   return fullName.trim().split(/\s+/)[0] ?? fullName;
@@ -27,30 +39,84 @@ const currentUser = {
   name: 'You',
   image: require('@/assets/images/IMG_0001_1 1.png'),
 };
+const DEFAULT_MATCH_AVATAR = require('@/assets/images/image.png');
 
 export default function MatchCelebrationScreen() {
   const router = useRouter();
+  const handleBackPress = React.useCallback(() => {
+    goBackOrReplace(router, '/home');
+  }, [router]);
   const { upsertConversationFromMatch } = useChatStore();
   const { markMatched } = useMatchFeedStore();
   const { id } = useLocalSearchParams<{ id?: string | string[] }>();
+  const [profileFromSetup, setProfileFromSetup] = React.useState<UserProfile | null>(null);
   const pulse = React.useRef(new Animated.Value(0)).current;
   const entrance = React.useRef(new Animated.Value(0)).current;
   const spin = React.useRef(new Animated.Value(0)).current;
   const driftValues = React.useRef([0, 1, 2, 3, 4, 5, 6, 7].map(() => new Animated.Value(0))).current;
 
   const personId = Array.isArray(id) ? id[0] : id;
-  const person = matchPeople.find((item) => item.id === personId) ?? matchPeople[0];
-  const firstName = getFirstName(person.name);
+  const fallbackPerson = personId ? matchPeople.find((item) => item.id === personId) ?? null : null;
+  const effectivePersonId = personId ?? fallbackPerson?.id ?? 'unknown-person';
+  const personName = profileFromSetup?.fullName || fallbackPerson?.name || 'Roommate';
+  const personAge = profileFromSetup?.age && profileFromSetup.age > 0 ? profileFromSetup.age : fallbackPerson?.age ?? 0;
+  const personIsVerified = Boolean(profileFromSetup?.isVerified ?? fallbackPerson?.isVerified);
+  const personWhatsappNumber =
+    profileFromSetup?.whatsAppNumber.trim() ||
+    profileFromSetup?.phoneNumber.trim() ||
+    fallbackPerson?.whatsappNumber?.trim() ||
+    '';
+  const personImageSource = React.useMemo<ImageSourcePropType>(() => {
+    if (profileFromSetup?.photoUrls[0]) {
+      return { uri: profileFromSetup.photoUrls[0] };
+    }
+
+    return fallbackPerson?.image ?? DEFAULT_MATCH_AVATAR;
+  }, [fallbackPerson?.image, profileFromSetup?.photoUrls]);
+  const firstName = getFirstName(personName);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    if (!personId) {
+      setProfileFromSetup(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void (async () => {
+      const profile = await getUserProfile(personId).catch(() => null);
+      if (!cancelled) {
+        setProfileFromSetup(profile);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [personId]);
 
   React.useEffect(() => {
     upsertConversationFromMatch({
-      matchPersonId: person.id,
-      name: person.name,
-      age: person.age,
-      avatar: person.image,
+      matchPersonId: effectivePersonId,
+      name: personName,
+      age: personAge,
+      isVerified: personIsVerified,
+      avatar: personImageSource,
+      whatsappNumber: personWhatsappNumber,
     }, { matched: true });
-    markMatched(person.id);
-  }, [markMatched, person.age, person.id, person.image, person.name, upsertConversationFromMatch]);
+    markMatched(effectivePersonId);
+  }, [
+    effectivePersonId,
+    markMatched,
+    personAge,
+    personIsVerified,
+    personImageSource,
+    personName,
+    personWhatsappNumber,
+    upsertConversationFromMatch,
+  ]);
 
   React.useEffect(() => {
     const pulseLoop = Animated.loop(
@@ -183,7 +249,7 @@ export default function MatchCelebrationScreen() {
         </Animated.View>
       </View>
 
-      <Pressable style={styles.backButton} onPress={() => router.back()}>
+      <Pressable style={styles.backButton} onPress={handleBackPress}>
         <MaterialCommunityIcons name="arrow-left" size={28} color="#FFFFFF" />
       </Pressable>
 
@@ -258,7 +324,7 @@ export default function MatchCelebrationScreen() {
               },
             ]}>
             <View style={[styles.coin, styles.coinLeft]}>
-              <Image source={person.image} style={styles.coinImage} />
+              <Image source={personImageSource} style={styles.coinImage} />
             </View>
             <View style={[styles.coin, styles.coinRight]}>
               <Image source={currentUser.image} style={styles.coinImage} />
@@ -279,10 +345,12 @@ export default function MatchCelebrationScreen() {
         <MessageUserButton
           label={`Message ${firstName}`}
           target={{
-            matchPersonId: person.id,
-            name: person.name,
-            age: person.age,
-            avatar: person.image,
+            matchPersonId: effectivePersonId,
+            name: personName,
+            age: personAge,
+            avatar: personImageSource,
+            isVerified: personIsVerified,
+            whatsappNumber: personWhatsappNumber,
           }}
           style={styles.messageButton}
         />

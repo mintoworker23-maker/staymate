@@ -7,6 +7,7 @@ export type ChatMessage = {
   imageUri?: string;
   kind?: 'whatsapp-request';
   requestStatus?: 'pending' | 'accepted' | 'denied';
+  deliveryStatus?: 'sending' | 'sent' | 'failed';
   sentAt: number;
 };
 
@@ -15,9 +16,13 @@ export type ChatConversation = {
   matchPersonId?: string;
   name: string;
   age: number;
+  isVerified: boolean;
   online: boolean;
   unreadCount: number;
+  lastReadAt: number;
   whatsappNumber: string;
+  canOpenWhatsapp: boolean;
+  whatsappRequestState: 'none' | 'outgoing-pending' | 'incoming-pending';
   avatar: ImageSourcePropType;
   messages: ChatMessage[];
 };

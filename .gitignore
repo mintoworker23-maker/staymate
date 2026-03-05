@@ -43,3 +43,4 @@ app-example
 /android
 .env.example
 lib/firebase.ts
+.env

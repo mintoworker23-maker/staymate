@@ -2,14 +2,12 @@ import React from 'react';
 import {
   Image,
   StyleSheet,
-  Text,
   View,
   ViewStyle,
   ImageSourcePropType,
 } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { RoundIconButton } from '@/components/ui/round-icon-button';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 
 export interface ProfileCardProps {

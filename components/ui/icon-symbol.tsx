@@ -24,10 +24,10 @@ const MAPPING: IconMapping = {
   // extras used by our custom UI
   'xmark': 'close',
   'pause': 'pause',
-  'hand.raised': 'pan_tool',
+  'hand.raised': 'pan-tool',
   // used for progress badge on profile card
   'arrow.clockwise': 'sync',
-  'power': 'power_settings_new',
+  'power': 'power-settings-new',
   'bubble.left.and.bubble.right.fill': 'chat',
   'slider.horizontal.3': 'settings',
 } as IconMapping;

@@ -1,9 +1,10 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { goBackOrReplace } from '@/lib/navigation';
 import { useOnboardingProfileStore } from '@/context/onboarding-profile-store';
 
 const QUESTION_STEPS = 7;
@@ -84,6 +85,11 @@ function InterestSection({
 
 export default function InterestsQuestionScreen() {
   const router = useRouter();
+  const { from } = useLocalSearchParams<{ from?: string | string[] }>();
+  const fromProfile = (Array.isArray(from) ? from[0] : from) === 'profile';
+  const handleBackPress = React.useCallback(() => {
+    goBackOrReplace(router, fromProfile ? '/profile' : '/start');
+  }, [fromProfile, router]);
   const { draft, setInterests } = useOnboardingProfileStore();
   const [lifestyleInterests, setLifestyleInterests] = React.useState<ChipState[]>(() =>
     hydrateSelections(initialLifestyleOptions, draft.lifestyleInterests)
@@ -111,14 +117,14 @@ export default function InterestsQuestionScreen() {
         .map((item) => item.label),
       hobbyInterests: hobbyInterests.filter((item) => item.selected).map((item) => item.label),
     });
-    router.push('/question-ready');
-  }, [hobbyInterests, lifestyleInterests, router, setInterests]);
+    router.push(fromProfile ? '/question-ready?from=profile' : '/question-ready');
+  }, [hobbyInterests, lifestyleInterests, router, setInterests, fromProfile]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.contentWrap}>
         <View style={styles.headerRow}>
-          <Pressable style={styles.backButton} onPress={() => router.back()}>
+          <Pressable style={styles.backButton} onPress={handleBackPress}>
             <MaterialCommunityIcons name="arrow-left" size={28} color="#FFFFFF" />
           </Pressable>
           <Text style={styles.headerTitle}>Interests</Text>

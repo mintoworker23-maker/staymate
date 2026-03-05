@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuthStore } from '@/context/auth-store';
 import { useOnboardingProfileStore } from '@/context/onboarding-profile-store';
+import { goBackOrReplace } from '@/lib/navigation';
 import { uploadProfileImages } from '@/lib/profile-images';
 import { updateUserProfile } from '@/lib/user-profile';
 import type { UserProfileInput } from '@/types/user-profile';
@@ -23,12 +24,56 @@ function getErrorCode(error: unknown) {
   return typeof code === 'string' ? code : null;
 }
 
+function getPhotoSaveErrorMessage(error: unknown) {
+  const code = getErrorCode(error);
+  const detail = error instanceof Error ? error.message : '';
+  const normalizedDetail = detail.trim();
+  const lowerDetail = normalizedDetail.toLowerCase();
+
+  if (code === 'cloudinary/missing-config') {
+    return 'Cloudinary is not configured. Add EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME and EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET.';
+  }
+
+  if (code === 'cloudinary/upload-failed' || code === 'cloudinary/invalid-response') {
+    return normalizedDetail
+      ? `Cloudinary upload failed: ${normalizedDetail}`
+      : 'Cloudinary upload failed. Check your upload preset and internet connection.';
+  }
+
+  if (code === 'permission-denied') {
+    return 'Firebase denied saving profile photos. Update Firestore rules to allow the signed-in user to update their own users/{uid} doc.';
+  }
+
+  if (code === 'unavailable') {
+    return 'Network issue while uploading photos. Please check internet and try again.';
+  }
+
+  if (code === 'invalid-argument' || lowerDetail.includes('unsupported field value')) {
+    return normalizedDetail
+      ? `Profile payload is invalid: ${normalizedDetail}`
+      : 'Profile data is invalid for Firestore. Please review onboarding inputs and try again.';
+  }
+
+  if (lowerDetail.includes('network request failed')) {
+    return 'Network request failed while uploading photos. Check internet, then restart Expo with `npx expo start -c` and try again.';
+  }
+
+  if (normalizedDetail) {
+    return `Unable to save photos: ${normalizedDetail}`;
+  }
+
+  return 'Unable to save photos right now. Please try again.';
+}
+
 function buildEmptySlots() {
   return Array.from({ length: MAX_IMAGES }, () => null as string | null);
 }
 
 export default function PhotoSetupQuestionScreen() {
   const router = useRouter();
+  const handleBackPress = React.useCallback(() => {
+    goBackOrReplace(router, '/start');
+  }, [router]);
   const { user } = useAuthStore();
   const { draft, resetDraft } = useOnboardingProfileStore();
   const [imageSlots, setImageSlots] = React.useState<(string | null)[]>(buildEmptySlots());
@@ -92,16 +137,28 @@ export default function PhotoSetupQuestionScreen() {
     return {
       email,
       fullName: draft.fullName,
+      bio: '',
+      isOnline: true,
       age: draft.age,
       dateOfBirth: draft.dateOfBirth,
       gender: draft.gender,
       phoneNumber: draft.phoneNumber,
       whatsAppNumber: draft.whatsAppNumber,
+      isVerified: false,
       accommodation: draft.accommodation,
       preferredRoommateGender: draft.preferredRoommateGender,
       roommateAccommodationPreference: draft.roommateAccommodationPreference,
       photoUrls,
       budgetRange: draft.budgetRange,
+      institutionName: draft.institutionName,
+      institutionKey: draft.institutionKey,
+      campus: draft.campus,
+      town: draft.town,
+      townKey: draft.townKey,
+      estate: draft.estate,
+      locationLat: draft.locationLat,
+      locationLng: draft.locationLng,
+      locationRadiusKm: draft.locationRadiusKm,
       hasAccommodation: draft.hasAccommodation,
       lifestyleInterests: draft.lifestyleInterests,
       hobbyInterests: draft.hobbyInterests,
@@ -138,22 +195,8 @@ export default function PhotoSetupQuestionScreen() {
         resetDraft();
         router.replace('/home');
       } catch (error) {
-        const code = getErrorCode(error);
-        if (code === 'cloudinary/missing-config') {
-          setErrorMessage(
-            'Cloudinary is not configured. Add EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME and EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET.'
-          );
-        } else if (code === 'cloudinary/read-failed') {
-          setErrorMessage('Could not read one of the selected images. Please try different photos.');
-        } else if (code === 'cloudinary/upload-failed' || code === 'cloudinary/invalid-response') {
-          setErrorMessage('Unable to upload photos to Cloudinary right now. Please try again.');
-        } else if (code === 'permission-denied') {
-          setErrorMessage('Photo upload blocked by Firebase rules. Please update Storage/Firestore rules.');
-        } else if (code === 'unavailable') {
-          setErrorMessage('Network issue while uploading photos. Please try again.');
-        } else {
-          setErrorMessage('Unable to save photos right now. Please try again.');
-        }
+        console.error('[question-photos] Failed to save uploaded photos', error);
+        setErrorMessage(getPhotoSaveErrorMessage(error));
       } finally {
         setIsSubmitting(false);
       }
@@ -164,7 +207,7 @@ export default function PhotoSetupQuestionScreen() {
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.contentWrap}>
         <View style={styles.headerRow}>
-          <Pressable style={styles.backButton} onPress={() => router.back()}>
+          <Pressable style={styles.backButton} onPress={handleBackPress}>
             <MaterialCommunityIcons name="arrow-left" size={28} color="#FFFFFF" />
           </Pressable>
           <Text style={styles.headerTitle}>Profile photos</Text>

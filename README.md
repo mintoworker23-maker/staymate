@@ -70,6 +70,25 @@ To learn more about developing your project with Expo, look at the following res
 5. If Android native Firebase features fail, confirm `android.package` in `app.json`
    matches `client[0].client_info.android_client_info.package_name` in `google-services.json`.
 
+## Firestore rules (required for chat)
+
+If chat sends fail with `Missing or insufficient permissions`, deploy the Firestore rules in
+`firestore.rules`:
+
+```bash
+npm install -g firebase-tools
+firebase login
+firebase use staymate-daec2
+firebase deploy --only firestore:rules
+```
+
+The included rules allow:
+
+- Signed-in users to read discoverable `users` documents.
+- A user to write only their own `users/{uid}` profile.
+- Chat read/write only for participants in each chat.
+- Message create only by the authenticated sender.
+
 ## Cloudinary setup (profile photos)
 
 1. Create a Cloudinary account and copy your **Cloud name**.

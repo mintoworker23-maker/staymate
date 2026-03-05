@@ -21,6 +21,15 @@ type OnboardingProfileStoreValue = {
     gender: UserGender;
     phoneNumber: string;
     whatsAppNumber: string;
+    institutionName: string;
+    institutionKey: string;
+    campus: string;
+    town: string;
+    townKey: string;
+    estate: string;
+    locationLat: number | null;
+    locationLng: number | null;
+    locationRadiusKm: number;
   }) => void;
   setPreferences: (payload: {
     accommodation: AccommodationType;
@@ -53,6 +62,15 @@ export function OnboardingProfileStoreProvider({ children }: { children: React.R
       gender: UserGender;
       phoneNumber: string;
       whatsAppNumber: string;
+      institutionName: string;
+      institutionKey: string;
+      campus: string;
+      town: string;
+      townKey: string;
+      estate: string;
+      locationLat: number | null;
+      locationLng: number | null;
+      locationRadiusKm: number;
     }) => {
       setDraft((prev) => ({
         ...prev,
@@ -62,6 +80,15 @@ export function OnboardingProfileStoreProvider({ children }: { children: React.R
         gender: payload.gender,
         phoneNumber: payload.phoneNumber,
         whatsAppNumber: payload.whatsAppNumber,
+        institutionName: payload.institutionName,
+        institutionKey: payload.institutionKey,
+        campus: payload.campus,
+        town: payload.town,
+        townKey: payload.townKey,
+        estate: payload.estate,
+        locationLat: payload.locationLat,
+        locationLng: payload.locationLng,
+        locationRadiusKm: payload.locationRadiusKm,
       }));
     },
     []

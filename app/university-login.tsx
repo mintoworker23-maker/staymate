@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getLastLoginEmail, saveLastLoginEmail } from '@/lib/auth-session';
+import { goBackOrReplace } from '@/lib/navigation';
 
 const personalDomains = new Set(['gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com', 'icloud.com']);
 const STUDENT_EMAIL_PATTERN = /\.(edu|ac\.[a-z]{2,})$/i;
@@ -31,6 +32,9 @@ const QUESTION_STEPS = 7;
 
 export default function UniversityLoginScreen() {
   const router = useRouter();
+  const handleBackPress = React.useCallback(() => {
+    goBackOrReplace(router, '/start');
+  }, [router]);
   const params = useLocalSearchParams<{ mode?: string }>();
   const mode = params.mode === 'login' ? 'login' : 'register';
   const [email, setEmail] = React.useState('');
@@ -79,7 +83,7 @@ export default function UniversityLoginScreen() {
         style={styles.contentWrap}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.headerRow}>
-          <Pressable style={styles.backButton} onPress={() => router.back()}>
+          <Pressable style={styles.backButton} onPress={handleBackPress}>
             <MaterialCommunityIcons name="arrow-left" size={28} color="#FFFFFF" />
           </Pressable>
           <Text style={styles.headerTitle}>

@@ -6,6 +6,7 @@ export type BottomNavigationItem = {
   icon: React.ComponentProps<typeof MaterialCommunityIcons>['name'];
   onPress?: () => void;
   accessibilityLabel?: string;
+  badgeCount?: number;
 };
 
 type BottomNavigationProps = {
@@ -60,6 +61,8 @@ export function BottomNavigation({
       ) : null}
       {items.map((item, index) => {
         const isActive = index === clampedIndex;
+        const badgeCount = Math.max(0, Math.floor(item.badgeCount ?? 0));
+        const badgeLabel = badgeCount > 99 ? '99+' : String(badgeCount);
 
         return (
           <Pressable
@@ -71,11 +74,18 @@ export function BottomNavigation({
             accessibilityRole="button"
             accessibilityLabel={item.accessibilityLabel}
             style={styles.item}>
-            <MaterialCommunityIcons
-              name={item.icon}
-              size={isActive ? 31 : 28}
-              color={isActive ? '#FFFFFF' : '#3F1D84'}
-            />
+            <View style={styles.iconWrap}>
+              <MaterialCommunityIcons
+                name={item.icon}
+                size={isActive ? 31 : 28}
+                color={isActive ? '#FFFFFF' : '#3F1D84'}
+              />
+              {badgeCount > 0 ? (
+                <View style={styles.badge}>
+                  <Animated.Text style={styles.badgeText}>{badgeLabel}</Animated.Text>
+                </View>
+              ) : null}
+            </View>
           </Pressable>
         );
       })}
@@ -101,6 +111,33 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 1,
+  },
+  iconWrap: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  badge: {
+    position: 'absolute',
+    top: -2,
+    right: -6,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    backgroundColor: '#DF3E57',
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    lineHeight: 10,
+    fontFamily: 'Prompt-Bold',
   },
   activePill: {
     position: 'absolute',

@@ -22,34 +22,32 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BrandedPromptModal } from '@/components/branded-prompt-modal';
 import { type ChatMessage } from '@/data/chats';
 import { useChatStore } from '@/context/chat-store';
-
-const replyPool = [
-  'Sounds good.',
-  'Perfect, let us do that.',
-  'Can we meet tomorrow?',
-  'I am available after 5 PM.',
-  'Thanks for the update.',
-];
+import { goBackOrReplace } from '@/lib/navigation';
+import { getUserProfile } from '@/lib/user-profile';
 
 function formatTime(timestamp: number) {
   return new Date(timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
-type DeletedMessageEntry = {
-  message: ChatMessage;
-  index: number;
-};
+function createClientMessageId(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
 export default function ChatDetailScreen() {
   const router = useRouter();
+  const handleBackPress = React.useCallback(() => {
+    goBackOrReplace(router, '/chat');
+  }, [router]);
   const { id } = useLocalSearchParams<{ id?: string | string[] }>();
   const chatId = Array.isArray(id) ? id[0] : id;
 
   const {
     getConversationById,
+    markConversationRead,
+    requestWhatsappAccess,
+    respondToWhatsappRequest,
     appendMessage,
-    updateConversation,
-    updateMessage,
+    deleteMessage,
   } = useChatStore();
 
   const conversation = getConversationById(chatId);
@@ -58,13 +56,7 @@ export default function ChatDetailScreen() {
   const [selectedAttachmentCaption, setSelectedAttachmentCaption] = React.useState('');
   const [selectedMessageIds, setSelectedMessageIds] = React.useState<string[]>([]);
   const [pendingDeleteMessageIds, setPendingDeleteMessageIds] = React.useState<string[] | null>(null);
-  const [lastDeletedBatch, setLastDeletedBatch] = React.useState<DeletedMessageEntry[] | null>(null);
   const messageListRef = React.useRef<FlatList<ChatMessage>>(null);
-  const replyTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const undoTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const whatsappResponseTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const conversationRef = React.useRef(conversation);
-  const nextSimulatedWhatsAppStatusRef = React.useRef<'accepted' | 'denied'>('denied');
 
   React.useEffect(() => {
     setDraft('');
@@ -72,26 +64,7 @@ export default function ChatDetailScreen() {
     setSelectedAttachmentCaption('');
     setSelectedMessageIds([]);
     setPendingDeleteMessageIds(null);
-    setLastDeletedBatch(null);
   }, [chatId]);
-
-  React.useEffect(() => {
-    conversationRef.current = conversation;
-  }, [conversation]);
-
-  React.useEffect(() => {
-    return () => {
-      if (replyTimerRef.current) {
-        clearTimeout(replyTimerRef.current);
-      }
-      if (undoTimerRef.current) {
-        clearTimeout(undoTimerRef.current);
-      }
-      if (whatsappResponseTimerRef.current) {
-        clearTimeout(whatsappResponseTimerRef.current);
-      }
-    };
-  }, []);
 
   React.useEffect(() => {
     if (!conversation || conversation.messages.length === 0) return;
@@ -100,6 +73,12 @@ export default function ChatDetailScreen() {
       messageListRef.current?.scrollToEnd({ animated: true });
     });
   }, [conversation, conversation?.messages.length]);
+
+  React.useEffect(() => {
+    if (!conversation || conversation.unreadCount <= 0) return;
+
+    void markConversationRead(conversation.id);
+  }, [conversation, markConversationRead]);
 
   const sendMessage = React.useCallback(() => {
     if (!conversation) return;
@@ -111,36 +90,13 @@ export default function ChatDetailScreen() {
     const now = Date.now();
 
     appendMessage(conversationId, {
-      id: `${conversationId}-${now}-me`,
+      id: createClientMessageId(`${conversationId}-me`),
       sender: 'me',
       text,
       sentAt: now,
     });
     setDraft('');
-
-    if (replyTimerRef.current) {
-      clearTimeout(replyTimerRef.current);
-    }
-
-    replyTimerRef.current = setTimeout(() => {
-      const replyTime = Date.now();
-      const replyText = replyPool[Math.floor(Math.random() * replyPool.length)];
-
-      updateConversation(conversationId, (prev) => ({
-        ...prev,
-        online: true,
-        messages: [
-          ...prev.messages,
-          {
-            id: `${conversationId}-${replyTime}-them`,
-            sender: 'them',
-            text: replyText,
-            sentAt: replyTime,
-          },
-        ],
-      }));
-    }, 700);
-  }, [appendMessage, conversation, draft, updateConversation]);
+  }, [appendMessage, conversation, draft]);
 
   const pickImageAttachment = React.useCallback(async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -169,7 +125,7 @@ export default function ChatDetailScreen() {
     const caption = selectedAttachmentCaption.trim();
 
     appendMessage(conversation.id, {
-      id: `${conversation.id}-${now}-image`,
+      id: createClientMessageId(`${conversation.id}-image`),
       sender: 'me',
       text: caption,
       imageUri: selectedAttachmentUri,
@@ -181,28 +137,43 @@ export default function ChatDetailScreen() {
   }, [appendMessage, conversation, selectedAttachmentCaption, selectedAttachmentUri]);
 
   const openWhatsAppWithTranscript = React.useCallback(async () => {
-    const active = conversationRef.current;
-    if (!active) return;
+    if (!conversation) return;
 
-    const transcript = active.messages
+    if (!conversation.canOpenWhatsapp) {
+      Alert.alert(
+        'WhatsApp access required',
+        `Send ${conversation.name} a WhatsApp access request first. You can only open WhatsApp after they accept.`
+      );
+      return;
+    }
+
+    const transcript = conversation.messages
       .map((message) => {
-        if (message.kind === 'whatsapp-request') {
-          const status = message.requestStatus ?? 'pending';
-          return `${message.sender === 'me' ? 'Me' : active.name}: WhatsApp request (${status})`;
-        }
-
         if (message.imageUri && message.text.trim().length === 0) {
-          return `${message.sender === 'me' ? 'Me' : active.name}: [Image attachment]`;
+          return `${message.sender === 'me' ? 'Me' : conversation.name}: [Image attachment]`;
         }
 
-        return `${message.sender === 'me' ? 'Me' : active.name}: ${message.text}`;
+        return `${message.sender === 'me' ? 'Me' : conversation.name}: ${message.text}`;
       })
       .join('\n');
 
     const whatsappText = encodeURIComponent(
-      `Hi ${active.name}, continuing our StayMate chat on WhatsApp.\n\n${transcript}`
+      `Hi ${conversation.name}, continuing our StayMate chat on WhatsApp.\n\n${transcript}`
     );
-    const phone = active.whatsappNumber.replace(/\D/g, '');
+    let phone = conversation.whatsappNumber.replace(/\D/g, '');
+    if (!phone && conversation.matchPersonId) {
+      const profile = await getUserProfile(conversation.matchPersonId).catch(() => null);
+      const fallbackNumber = profile?.whatsAppNumber.trim() || profile?.phoneNumber.trim() || '';
+      phone = fallbackNumber.replace(/\D/g, '');
+    }
+
+    if (!phone) {
+      Alert.alert(
+        'WhatsApp not available',
+        `${conversation.name} has not added a WhatsApp number yet.`
+      );
+      return;
+    }
     const nativeUrl = `whatsapp://send?phone=${phone}&text=${whatsappText}`;
     const webUrl = `https://wa.me/${phone}?text=${whatsappText}`;
 
@@ -216,104 +187,60 @@ export default function ChatDetailScreen() {
     } catch {
       Alert.alert('WhatsApp unavailable', 'Unable to open WhatsApp on this device right now.');
     }
-  }, []);
+  }, [conversation]);
 
-  const simulateRemoteWhatsAppDecision = React.useCallback(
-    (requestMessageId: string, status: 'accepted' | 'denied') => {
-      if (!conversation) return;
-
-      if (whatsappResponseTimerRef.current) {
-        clearTimeout(whatsappResponseTimerRef.current);
-      }
-
-      whatsappResponseTimerRef.current = setTimeout(() => {
-        const activeConversation = conversationRef.current;
-        if (!activeConversation || activeConversation.id !== conversation.id) return;
-
-        updateMessage(conversation.id, requestMessageId, (message) => ({
-          ...message,
-          requestStatus: status,
-        }));
-
-        const now = Date.now();
-        appendMessage(conversation.id, {
-          id: `${conversation.id}-${now}-wa-response`,
-          sender: 'them',
-          kind: 'whatsapp-request',
-          requestStatus: status,
-          text:
-            status === 'accepted'
-              ? 'I accepted your WhatsApp request. Tap WhatsApp again to continue there.'
-              : 'I denied your WhatsApp request for now.',
-          sentAt: now,
-        });
-      }, 1050);
-    },
-    [appendMessage, conversation, updateMessage]
-  );
-
-  const updateWhatsAppRequestStatus = React.useCallback(
-    (messageId: string, status: 'accepted' | 'denied') => {
-      if (!conversation) return;
-
-      updateMessage(conversation.id, messageId, (message) => ({
-        ...message,
-        requestStatus: status,
-      }));
-    },
-    [conversation, updateMessage]
-  );
-
-  const sendWhatsAppRequest = React.useCallback(() => {
+  const handleWhatsappHeaderPress = React.useCallback(() => {
     if (!conversation) return;
 
-    const hasAcceptedRequest = conversation.messages.some(
-      (message) =>
-        message.kind === 'whatsapp-request' &&
-        message.sender === 'me' &&
-        message.requestStatus === 'accepted'
-    );
-    if (hasAcceptedRequest) {
-      void openWhatsAppWithTranscript();
-      return;
-    }
+    void (async () => {
+      if (conversation.canOpenWhatsapp) {
+        await openWhatsAppWithTranscript();
+        return;
+      }
 
-    const hasPendingRequest = conversation.messages.some(
-      (message) =>
-        message.kind === 'whatsapp-request' &&
-        message.sender === 'me' &&
-        message.requestStatus === 'pending'
-    );
-    if (hasPendingRequest) {
-      Alert.alert('Request pending', 'You already sent a WhatsApp request in this chat.');
-      return;
-    }
+      const requestResult = await requestWhatsappAccess(conversation.id);
+      if (requestResult === 'already-granted') {
+        await openWhatsAppWithTranscript();
+        return;
+      }
+      if (requestResult === 'pending') {
+        Alert.alert(
+          'Request pending',
+          `You already sent a WhatsApp access request to ${conversation.name}.`
+        );
+        return;
+      }
+      if (requestResult === 'incoming-pending') {
+        Alert.alert(
+          'Incoming request pending',
+          `You have an incoming WhatsApp request from ${conversation.name}. Accept or decline it from the chat message.`
+        );
+        return;
+      }
+      if (requestResult === 'unavailable') {
+        Alert.alert('Request failed', 'Unable to send WhatsApp request right now.');
+        return;
+      }
 
-    const requestTime = Date.now();
-    appendMessage(conversation.id, {
-      id: `${conversation.id}-${requestTime}-wa-request`,
-      sender: 'me',
-      kind: 'whatsapp-request',
-      requestStatus: 'pending',
-      text: 'Requested to move this chat to WhatsApp.',
-      sentAt: requestTime,
-    });
+      Alert.alert(
+        'Request sent',
+        `Your WhatsApp access request has been sent to ${conversation.name}.`
+      );
+    })();
+  }, [conversation, openWhatsAppWithTranscript, requestWhatsappAccess]);
 
-    const simulatedStatus = nextSimulatedWhatsAppStatusRef.current;
-    nextSimulatedWhatsAppStatusRef.current = simulatedStatus === 'accepted' ? 'denied' : 'accepted';
-    simulateRemoteWhatsAppDecision(`${conversation.id}-${requestTime}-wa-request`, simulatedStatus);
-  }, [appendMessage, conversation, openWhatsAppWithTranscript, simulateRemoteWhatsAppDecision]);
+  const handleRespondToWhatsappRequest = React.useCallback(
+    (decision: 'accepted' | 'denied') => {
+      if (!conversation) return;
 
-  const queueUndoBatch = React.useCallback((entries: DeletedMessageEntry[]) => {
-    if (undoTimerRef.current) {
-      clearTimeout(undoTimerRef.current);
-    }
-
-    setLastDeletedBatch(entries);
-    undoTimerRef.current = setTimeout(() => {
-      setLastDeletedBatch(null);
-    }, 5000);
-  }, []);
+      void respondToWhatsappRequest(conversation.id, decision).then((didRespond) => {
+        if (!didRespond) {
+          Alert.alert('Action failed', 'Unable to update WhatsApp request right now.');
+        }
+      });
+    },
+    [conversation, respondToWhatsappRequest]
+  );
 
   const openDeletePrompt = React.useCallback((ids: string[]) => {
     const uniqueIds = Array.from(new Set(ids));
@@ -324,60 +251,18 @@ export default function ChatDetailScreen() {
   const confirmDeleteMessages = React.useCallback(() => {
     if (!conversation || !pendingDeleteMessageIds || pendingDeleteMessageIds.length === 0) return;
 
-    const idsToDelete = new Set(pendingDeleteMessageIds);
-    let deletedEntries: DeletedMessageEntry[] = [];
-
-    updateConversation(conversation.id, (prev) => {
-      deletedEntries = prev.messages
-        .map((message, index) => ({ message, index }))
-        .filter((entry) => idsToDelete.has(entry.message.id));
-
-      if (deletedEntries.length === 0) return prev;
-
-      return {
-        ...prev,
-        messages: prev.messages.filter((message) => !idsToDelete.has(message.id)),
-      };
+    const idsToDelete = Array.from(new Set(pendingDeleteMessageIds));
+    idsToDelete.forEach((messageId) => {
+      deleteMessage(conversation.id, messageId);
     });
-
-    if (deletedEntries.length > 0) {
-      queueUndoBatch(deletedEntries);
-    }
-
-    setSelectedMessageIds((prev) => prev.filter((id) => !idsToDelete.has(id)));
+    setSelectedMessageIds((prev) => prev.filter((id) => !idsToDelete.includes(id)));
     setPendingDeleteMessageIds(null);
-  }, [conversation, pendingDeleteMessageIds, queueUndoBatch, updateConversation]);
-
-  const undoDeleteMessages = React.useCallback(() => {
-    if (!conversation || !lastDeletedBatch || lastDeletedBatch.length === 0) return;
-
-    updateConversation(conversation.id, (prev) => {
-      const restoredMessages = [...prev.messages];
-      const existingIds = new Set(prev.messages.map((entry) => entry.id));
-      const orderedEntries = [...lastDeletedBatch].sort((a, b) => a.index - b.index);
-
-      for (const entry of orderedEntries) {
-        if (existingIds.has(entry.message.id)) continue;
-        const insertAt = Math.min(Math.max(entry.index, 0), restoredMessages.length);
-        restoredMessages.splice(insertAt, 0, entry.message);
-        existingIds.add(entry.message.id);
-      }
-
-      return {
-        ...prev,
-        messages: restoredMessages,
-      };
-    });
-
-    if (undoTimerRef.current) {
-      clearTimeout(undoTimerRef.current);
-    }
-    setLastDeletedBatch(null);
-  }, [conversation, lastDeletedBatch, updateConversation]);
+  }, [conversation, deleteMessage, pendingDeleteMessageIds]);
 
   const handleMessagePress = React.useCallback(
-    (messageId: string) => {
+    (messageId: string, mine: boolean) => {
       if (selectedMessageIds.length === 0) return;
+      if (!mine) return;
       setSelectedMessageIds((current) => {
         if (current.includes(messageId)) {
           return current.filter((id) => id !== messageId);
@@ -389,7 +274,8 @@ export default function ChatDetailScreen() {
     [selectedMessageIds.length]
   );
 
-  const handleMessageLongPress = React.useCallback((messageId: string) => {
+  const handleMessageLongPress = React.useCallback((messageId: string, mine: boolean) => {
+    if (!mine) return;
     setSelectedMessageIds((current) => (current.includes(messageId) ? current : [...current, messageId]));
   }, []);
 
@@ -399,10 +285,26 @@ export default function ChatDetailScreen() {
 
   const onSwipeDelete = React.useCallback(
     (message: ChatMessage) => {
+      if (message.sender !== 'me') return;
       if (selectedMessageIds.length > 0) return;
       openDeletePrompt([message.id]);
     },
     [openDeletePrompt, selectedMessageIds.length]
+  );
+
+  const retryFailedMessage = React.useCallback(
+    (message: ChatMessage) => {
+      if (!conversation || message.deliveryStatus !== 'failed') return;
+
+      const now = Date.now();
+      deleteMessage(conversation.id, message.id);
+      appendMessage(conversation.id, {
+        ...message,
+        id: createClientMessageId(`${conversation.id}-retry`),
+        sentAt: now,
+      });
+    },
+    [appendMessage, conversation, deleteMessage]
   );
 
   const renderMessage = React.useCallback(
@@ -410,15 +312,32 @@ export default function ChatDetailScreen() {
       const mine = item.sender === 'me';
       const hasImage = Boolean(item.imageUri);
       const hasText = item.text.trim().length > 0;
-      const requestStatus = item.requestStatus ?? 'pending';
-      const isWhatsAppRequest = item.kind === 'whatsapp-request';
       const isSelectionMode = selectedMessageIds.length > 0;
       const isSelected = selectedMessageIds.includes(item.id);
-      const canSwipeDelete = !isSelectionMode;
+      const canSwipeDelete = !isSelectionMode && mine;
+      const deliveryStatus = mine ? item.deliveryStatus ?? 'sent' : 'sent';
 
       const bubbleSelectionStyle = isSelected ? styles.selectedMessageBubble : null;
+      const isWhatsappRequest = item.kind === 'whatsapp-request';
+      const showIncomingRequestActions =
+        !mine &&
+        item.requestStatus === 'pending' &&
+        conversation?.whatsappRequestState === 'incoming-pending';
 
-      if (isWhatsAppRequest) {
+      if (isWhatsappRequest) {
+        const requestText =
+          item.requestStatus === 'accepted'
+            ? mine
+              ? 'You approved WhatsApp access.'
+              : `${conversation?.name ?? 'User'} approved your WhatsApp access request.`
+            : item.requestStatus === 'denied'
+              ? mine
+                ? 'You declined WhatsApp access.'
+                : `${conversation?.name ?? 'User'} declined your WhatsApp access request.`
+              : mine
+                ? 'You requested WhatsApp access.'
+                : `${conversation?.name ?? 'User'} requested WhatsApp access.`;
+
         return (
           <Swipeable
             enabled={canSwipeDelete}
@@ -430,54 +349,41 @@ export default function ChatDetailScreen() {
               </View>
             )}>
             <Pressable
-              onLongPress={() => handleMessageLongPress(item.id)}
-              onPress={() => handleMessagePress(item.id)}
+              onLongPress={mine ? () => handleMessageLongPress(item.id, mine) : undefined}
+              onPress={() => handleMessagePress(item.id, mine)}
               delayLongPress={250}
               style={[styles.messageRow, mine ? styles.messageRowMine : styles.messageRowTheirs]}>
               <View
                 style={[
-                  styles.messageBubble,
-                  mine ? styles.messageBubbleMine : styles.messageBubbleTheirs,
                   styles.requestBubble,
+                  mine ? styles.requestBubbleMine : styles.requestBubbleTheirs,
                   bubbleSelectionStyle,
                 ]}>
-                <View style={styles.requestHeader}>
-                  <MaterialCommunityIcons name="whatsapp" size={18} color={mine ? '#1B1533' : '#FFFFFF'} />
-                  <Text style={mine ? styles.messageTextMine : styles.messageTextTheirs}>{item.text}</Text>
+                <View style={styles.requestRow}>
+                  <MaterialCommunityIcons
+                    name="shield-lock-outline"
+                    size={18}
+                    color={mine ? '#1B1533' : '#FFFFFF'}
+                  />
+                  <Text style={mine ? styles.requestTextMine : styles.requestTextTheirs}>
+                    {requestText}
+                  </Text>
                 </View>
 
-                {requestStatus === 'pending' && !mine ? (
-                  <View style={styles.requestActions}>
+                {showIncomingRequestActions ? (
+                  <View style={styles.requestActionsRow}>
+                    <Pressable
+                      style={[styles.requestActionButton, styles.requestDeclineButton]}
+                      onPress={() => handleRespondToWhatsappRequest('denied')}>
+                      <Text style={styles.requestDeclineText}>Decline</Text>
+                    </Pressable>
                     <Pressable
                       style={[styles.requestActionButton, styles.requestAcceptButton]}
-                      onPress={() => updateWhatsAppRequestStatus(item.id, 'accepted')}>
-                      <MaterialCommunityIcons name="check" size={18} color="#FFFFFF" />
-                    </Pressable>
-                    <Pressable
-                      style={[styles.requestActionButton, styles.requestDenyButton]}
-                      onPress={() => updateWhatsAppRequestStatus(item.id, 'denied')}>
-                      <MaterialCommunityIcons name="close" size={18} color="#FFFFFF" />
+                      onPress={() => handleRespondToWhatsappRequest('accepted')}>
+                      <Text style={styles.requestAcceptText}>Accept</Text>
                     </Pressable>
                   </View>
-                ) : (
-                  <View
-                    style={[
-                      styles.requestStatusBadge,
-                      requestStatus === 'accepted'
-                        ? styles.requestStatusAccepted
-                        : requestStatus === 'denied'
-                          ? styles.requestStatusDenied
-                          : styles.requestStatusPending,
-                    ]}>
-                    <Text style={styles.requestStatusText}>
-                      {requestStatus === 'accepted'
-                        ? 'Accepted'
-                        : requestStatus === 'denied'
-                          ? 'Denied'
-                          : 'Pending'}
-                    </Text>
-                  </View>
-                )}
+                ) : null}
               </View>
               <Text style={[styles.messageTime, mine ? styles.messageTimeMine : styles.messageTimeTheirs]}>
                 {formatTime(item.sentAt)}
@@ -498,8 +404,8 @@ export default function ChatDetailScreen() {
             </View>
           )}>
           <Pressable
-            onLongPress={() => handleMessageLongPress(item.id)}
-            onPress={() => handleMessagePress(item.id)}
+            onLongPress={mine ? () => handleMessageLongPress(item.id, mine) : undefined}
+            onPress={() => handleMessagePress(item.id, mine)}
             delayLongPress={250}
             style={[styles.messageRow, mine ? styles.messageRowMine : styles.messageRowTheirs]}>
             <View
@@ -522,11 +428,30 @@ export default function ChatDetailScreen() {
             <Text style={[styles.messageTime, mine ? styles.messageTimeMine : styles.messageTimeTheirs]}>
               {formatTime(item.sentAt)}
             </Text>
+            {mine && deliveryStatus === 'sending' ? (
+              <Text style={styles.sendingText}>Sending...</Text>
+            ) : null}
+            {mine && deliveryStatus === 'failed' ? (
+              <Pressable
+                style={styles.retryButton}
+                onPress={() => retryFailedMessage(item)}>
+                <MaterialCommunityIcons name="refresh" size={12} color="#FFFFFF" />
+                <Text style={styles.retryButtonText}>Retry</Text>
+              </Pressable>
+            ) : null}
           </Pressable>
         </Swipeable>
       );
     },
-    [handleMessageLongPress, handleMessagePress, onSwipeDelete, selectedMessageIds, updateWhatsAppRequestStatus]
+    [
+      conversation,
+      handleMessageLongPress,
+      handleMessagePress,
+      handleRespondToWhatsappRequest,
+      onSwipeDelete,
+      retryFailedMessage,
+      selectedMessageIds,
+    ]
   );
 
   if (!conversation) {
@@ -534,7 +459,7 @@ export default function ChatDetailScreen() {
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <View style={styles.emptyWrap}>
           <Text style={styles.emptyTitle}>Chat not found</Text>
-          <Pressable style={styles.emptyBackButton} onPress={() => router.back()}>
+          <Pressable style={styles.emptyBackButton} onPress={handleBackPress}>
             <Text style={styles.emptyBackText}>Go back</Text>
           </Pressable>
         </View>
@@ -549,7 +474,7 @@ export default function ChatDetailScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}>
         <View style={styles.header}>
-          <Pressable style={styles.headerButton} onPress={() => router.back()}>
+          <Pressable style={styles.headerButton} onPress={handleBackPress}>
             <MaterialCommunityIcons name="arrow-left" size={34} color="#FFFFFF" />
           </Pressable>
 
@@ -561,8 +486,12 @@ export default function ChatDetailScreen() {
             </View>
           </View>
 
-          <Pressable style={styles.headerButton} onPress={sendWhatsAppRequest}>
-            <MaterialCommunityIcons name="whatsapp" size={30} color="#FFFFFF" />
+          <Pressable style={styles.headerButton} onPress={handleWhatsappHeaderPress}>
+            <MaterialCommunityIcons
+              name={conversation.canOpenWhatsapp ? 'whatsapp' : 'lock-outline'}
+              size={30}
+              color={conversation.canOpenWhatsapp ? '#FFFFFF' : '#D8CBFF'}
+            />
           </Pressable>
         </View>
 
@@ -662,33 +591,13 @@ export default function ChatDetailScreen() {
         }
         actions={[
           {
-            label: 'Delete for everyone',
-            tone: 'destructive',
-            onPress: confirmDeleteMessages,
-          },
-          {
-            label: 'Delete for me',
+            label: 'Delete',
             tone: 'destructive',
             onPress: confirmDeleteMessages,
           },
         ]}
         onClose={() => setPendingDeleteMessageIds(null)}
       />
-
-      {lastDeletedBatch ? (
-        <View
-          style={[
-            styles.undoBar,
-            selectedMessageIds.length > 0 ? styles.undoBarAboveSelection : styles.undoBarAboveComposer,
-          ]}>
-          <Text style={styles.undoText}>
-            {`${lastDeletedBatch.length} message${lastDeletedBatch.length > 1 ? 's' : ''} deleted`}
-          </Text>
-          <Pressable style={styles.undoButton} onPress={undoDeleteMessages}>
-            <Text style={styles.undoButtonText}>Undo</Text>
-          </Pressable>
-        </View>
-      ) : null}
     </SafeAreaView>
   );
 }
@@ -782,56 +691,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 6,
   },
-  requestBubble: {
-    minWidth: 230,
-    gap: 10,
-  },
-  requestHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  requestActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  requestActionButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  requestAcceptButton: {
-    backgroundColor: '#18A957',
-  },
-  requestDenyButton: {
-    backgroundColor: '#DF3E57',
-  },
-  requestStatusBadge: {
-    alignSelf: 'flex-start',
-    height: 26,
-    borderRadius: 13,
-    paddingHorizontal: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  requestStatusAccepted: {
-    backgroundColor: 'rgba(24, 169, 87, 0.22)',
-  },
-  requestStatusDenied: {
-    backgroundColor: 'rgba(223, 62, 87, 0.22)',
-  },
-  requestStatusPending: {
-    backgroundColor: 'rgba(255, 255, 255, 0.18)',
-  },
-  requestStatusText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    lineHeight: 14,
-    fontFamily: 'Prompt-SemiBold',
-  },
   messageImage: {
     width: 180,
     height: 220,
@@ -848,6 +707,71 @@ const styles = StyleSheet.create({
   messageBubbleTheirs: {
     backgroundColor: '#5833A9',
     borderBottomLeftRadius: 10,
+  },
+  requestBubble: {
+    maxWidth: '84%',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  requestBubbleMine: {
+    backgroundColor: '#C8ED72',
+    borderBottomRightRadius: 10,
+  },
+  requestBubbleTheirs: {
+    backgroundColor: '#5833A9',
+    borderBottomLeftRadius: 10,
+  },
+  requestRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  requestTextMine: {
+    flex: 1,
+    color: '#1B1533',
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: 'Prompt-SemiBold',
+  },
+  requestTextTheirs: {
+    flex: 1,
+    color: '#FFFFFF',
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: 'Prompt-SemiBold',
+  },
+  requestActionsRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  requestActionButton: {
+    minWidth: 78,
+    height: 32,
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  requestDeclineButton: {
+    backgroundColor: 'rgba(197, 54, 90, 0.26)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.32)',
+  },
+  requestAcceptButton: {
+    backgroundColor: '#D5FF78',
+  },
+  requestDeclineText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontFamily: 'Prompt-SemiBold',
+  },
+  requestAcceptText: {
+    color: '#1B1533',
+    fontSize: 12,
+    fontFamily: 'Prompt-Bold',
   },
   messageTextMine: {
     color: '#1B1533',
@@ -872,6 +796,32 @@ const styles = StyleSheet.create({
   messageTimeTheirs: {
     color: '#FFFFFF',
     marginLeft: 2,
+  },
+  sendingText: {
+    marginTop: 4,
+    marginRight: 6,
+    color: '#D8CBFF',
+    fontSize: 11,
+    fontFamily: 'Prompt-SemiBold',
+    alignSelf: 'flex-end',
+  },
+  retryButton: {
+    marginTop: 4,
+    marginRight: 4,
+    height: 24,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    backgroundColor: '#C5365A',
+    alignSelf: 'flex-end',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontFamily: 'Prompt-Bold',
   },
   composerWrap: {
     marginHorizontal: 22,
@@ -1039,41 +989,5 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontFamily: 'Prompt-SemiBold',
-  },
-  undoBar: {
-    position: 'absolute',
-    left: 22,
-    right: 22,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#5A37AF',
-    paddingHorizontal: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  undoBarAboveComposer: {
-    bottom: 110,
-  },
-  undoBarAboveSelection: {
-    bottom: 110,
-  },
-  undoText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontFamily: 'Prompt-SemiBold',
-  },
-  undoButton: {
-    height: 30,
-    borderRadius: 15,
-    paddingHorizontal: 10,
-    backgroundColor: '#D5FF78',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  undoButtonText: {
-    color: '#1A1433',
-    fontSize: 12,
-    fontFamily: 'Prompt-Bold',
   },
 });

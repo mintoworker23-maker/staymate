@@ -1,5 +1,11 @@
 import { ImageSourcePropType } from 'react-native';
 
+import type {
+  AccommodationType,
+  BudgetRange,
+  UserGender,
+} from '@/types/user-profile';
+
 export type MatchPerson = {
   id: string;
   name: string;
@@ -7,8 +13,24 @@ export type MatchPerson = {
   role: string;
   score: number;
   image: ImageSourcePropType;
+  photos?: ImageSourcePropType[];
+  whatsappNumber?: string;
+  isVerified?: boolean;
   bio: string;
   preferences: string[];
+  accommodationType?: AccommodationType;
+  budgetRange?: BudgetRange;
+  gender?: UserGender;
+  hasAccommodation?: boolean;
+  institutionName?: string;
+  institutionKey?: string;
+  campus?: string;
+  town?: string;
+  townKey?: string;
+  estate?: string;
+  locationLat?: number | null;
+  locationLng?: number | null;
+  locationRadiusKm?: number;
 };
 
 export const matchPeople: MatchPerson[] = [

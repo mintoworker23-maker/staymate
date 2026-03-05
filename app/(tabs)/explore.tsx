@@ -1,15 +1,25 @@
 import React from 'react';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useRouter } from 'expo-router';
+import type { FirestoreError } from 'firebase/firestore';
 import { FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomNavigation } from '@/components/bottom-navigation';
 import { ExpandingSearch } from '@/components/expanding-search';
+import { useAuthStore } from '@/context/auth-store';
+import { useChatStore } from '@/context/chat-store';
 import { useMatchFeedStore } from '@/context/match-feed-store';
-import { matchPeople, type MatchPerson } from '@/data/people';
-
-const seedPeople: MatchPerson[] = matchPeople;
+import { useMatchRequestStore } from '@/context/match-request-store';
+import { type MatchPerson } from '@/data/people';
+import {
+  isDiscoverableProfile,
+  mapUserProfileToMatchPerson,
+} from '@/lib/discovery-people';
+import {
+  subscribeToDiscoverUserProfiles,
+  subscribeToUserProfile,
+} from '@/lib/user-profile';
 
 function MatchCard({ person, onPress }: { person: MatchPerson; onPress: () => void }) {
   return (
@@ -21,7 +31,12 @@ function MatchCard({ person, onPress }: { person: MatchPerson; onPress: () => vo
           <Text style={styles.scoreText}>{`${person.score}%`}</Text>
         </View>
       </View>
-      <Text style={styles.cardName}>{`${person.name}, ${person.age}`}</Text>
+      <View style={styles.cardNameRow}>
+        <Text style={styles.cardName}>{`${person.name}, ${person.age}`}</Text>
+        {person.isVerified ? (
+          <MaterialCommunityIcons name="check-decagram" size={18} color="#F6D84E" />
+        ) : null}
+      </View>
       <Text style={styles.cardRole}>{person.role}</Text>
     </Pressable>
   );
@@ -30,25 +45,35 @@ function MatchCard({ person, onPress }: { person: MatchPerson; onPress: () => vo
 export default function MatchExploreScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { rejectedPersonIds } = useMatchFeedStore();
-  const [people, setPeople] = React.useState<MatchPerson[]>(seedPeople);
+  const { user } = useAuthStore();
+  const { totalUnreadCount } = useChatStore();
+  const { rejectedPersonIds, matchedPersonIds } = useMatchFeedStore();
+  const { incomingCount, matchedUserIds } = useMatchRequestStore();
+  const [databasePeople, setDatabasePeople] = React.useState<MatchPerson[]>([]);
+  const [people, setPeople] = React.useState<MatchPerson[]>([]);
+  const [currentInstitutionKey, setCurrentInstitutionKey] = React.useState('');
+  const [hasLoadedCurrentProfile, setHasLoadedCurrentProfile] = React.useState(false);
+  const [discoverErrorMessage, setDiscoverErrorMessage] = React.useState<string | null>(null);
   const [isReloading, setIsReloading] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState('');
   const reloadTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const filteredPeople = React.useMemo(() => {
     const rejectedIds = new Set(rejectedPersonIds);
-    const availablePeople = people.filter((person) => !rejectedIds.has(person.id));
+    const matchedIds = new Set([...matchedPersonIds, ...matchedUserIds]);
+    const availablePeople = people.filter(
+      (person) => !rejectedIds.has(person.id) && !matchedIds.has(person.id)
+    );
     const query = searchQuery.trim().toLowerCase();
     if (!query) return availablePeople;
 
     return availablePeople.filter((person) => {
       return person.name.toLowerCase().includes(query) || person.role.toLowerCase().includes(query);
     });
-  }, [people, rejectedPersonIds, searchQuery]);
+  }, [matchedPersonIds, matchedUserIds, people, rejectedPersonIds, searchQuery]);
 
   const randomizePeople = React.useCallback(() => {
-    const shuffled = [...seedPeople]
+    const shuffled = [...databasePeople]
       .map((person) => ({
         ...person,
         score: Math.floor(Math.random() * 10) + 86,
@@ -56,7 +81,7 @@ export default function MatchExploreScreen() {
       .sort(() => Math.random() - 0.5);
 
     setPeople(shuffled);
-  }, []);
+  }, [databasePeople]);
 
   const handleReload = React.useCallback(() => {
     if (isReloading) return;
@@ -67,6 +92,69 @@ export default function MatchExploreScreen() {
       setIsReloading(false);
     }, 550);
   }, [isReloading, randomizePeople]);
+
+  const handleDiscoverError = React.useCallback((error: FirestoreError) => {
+    if (error.code === 'permission-denied') {
+      setDiscoverErrorMessage(
+        'Unable to load roommates. Firestore read permission is missing for users.'
+      );
+      return;
+    }
+
+    setDiscoverErrorMessage('Unable to load roommates right now. Please try again.');
+  }, []);
+
+  React.useEffect(() => {
+    if (!user) {
+      setCurrentInstitutionKey('');
+      setHasLoadedCurrentProfile(false);
+      return;
+    }
+
+    const unsubscribe = subscribeToUserProfile(
+      user.uid,
+      (profile) => {
+        setCurrentInstitutionKey(profile?.institutionKey ?? '');
+        setHasLoadedCurrentProfile(true);
+      },
+      () => {
+        setCurrentInstitutionKey('');
+        setHasLoadedCurrentProfile(true);
+      }
+    );
+
+    return unsubscribe;
+  }, [user]);
+
+  React.useEffect(() => {
+    if (!user || !hasLoadedCurrentProfile) {
+      setDatabasePeople([]);
+      setPeople([]);
+      setDiscoverErrorMessage(null);
+      return;
+    }
+
+    const unsubscribe = subscribeToDiscoverUserProfiles(
+      user.uid,
+      (profilesFromDb) => {
+        const discoverable = profilesFromDb
+          .filter(isDiscoverableProfile)
+          .map(mapUserProfileToMatchPerson);
+        setDatabasePeople(discoverable);
+        setDiscoverErrorMessage(null);
+      },
+      handleDiscoverError,
+      {
+        institutionKey: currentInstitutionKey,
+      }
+    );
+
+    return unsubscribe;
+  }, [currentInstitutionKey, handleDiscoverError, hasLoadedCurrentProfile, user]);
+
+  React.useEffect(() => {
+    setPeople(databasePeople);
+  }, [databasePeople]);
 
   React.useEffect(() => {
     return () => {
@@ -122,7 +210,11 @@ export default function MatchExploreScreen() {
         columnWrapperStyle={styles.rowGap}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.listContent, { paddingBottom: listBottomPadding }]}
-        ListEmptyComponent={<Text style={styles.emptyText}>No roommates found.</Text>}
+        ListEmptyComponent={
+          <Text style={styles.emptyText}>
+            {discoverErrorMessage ?? 'No roommates found.'}
+          </Text>
+        }
       />
 
       <BottomNavigation
@@ -142,8 +234,8 @@ export default function MatchExploreScreen() {
         items={[
           { icon: 'home' },
           { icon: 'target' },
-          { icon: 'chat-outline' },
-          { icon: 'handshake-outline' },
+          { icon: 'chat-outline', badgeCount: totalUnreadCount },
+          { icon: 'handshake-outline', badgeCount: incomingCount },
         ]}
       />
     </SafeAreaView>
@@ -234,7 +326,13 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 17,
     fontFamily: 'Prompt-Bold',
+  },
+  cardNameRow: {
     marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
   },
   cardRole: {
     color: '#FFFFFF',

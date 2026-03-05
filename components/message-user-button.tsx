@@ -11,6 +11,7 @@ type MessageUserButtonProps = {
     name: string;
     age: number;
     avatar: ImageSourcePropType;
+    isVerified?: boolean;
     whatsappNumber?: string;
   };
   variant?: 'icon' | 'pill';

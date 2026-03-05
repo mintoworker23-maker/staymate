@@ -16,7 +16,14 @@ import {
   View,
   ViewStyle,
 } from 'react-native';
-import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from 'react-native-svg';
+import Svg, {
+  Circle,
+  Defs,
+  LinearGradient as SvgLinearGradient,
+  Path,
+  Rect,
+  Stop,
+} from 'react-native-svg';
 
 export type ProfileDecision = 'reject' | 'accept';
 
@@ -24,8 +31,10 @@ export type SwipeProfile = {
   id: string;
   name: string;
   age: number;
+  isVerified?: boolean;
   role: string;
   score?: number;
+  whatsappNumber?: string;
   source?: 'roommates' | 'requests';
   photos: ImageSourcePropType[];
 };
@@ -47,7 +56,7 @@ const PAUSE_SIZE = 75;
 
 function sourceLabelFromProfile(profile: SwipeProfile) {
   if (profile.source === 'roommates') return 'Roommate to match';
-  if (profile.source === 'requests') return 'Match request';
+  if (profile.source === 'requests') return 'Random folks';
   return null;
 }
 
@@ -303,7 +312,50 @@ export function ProfileHeroCard({ profiles, style, onDecision }: ProfileHeroCard
   );
 
   if (!currentProfile || photos.length === 0) {
-    return <View style={[styles.container, styles.emptyState, style]} />;
+    return (
+      <View style={[styles.container, styles.emptyState, style]}>
+        <View pointerEvents="none" style={styles.emptyGlowTop} />
+        <View pointerEvents="none" style={styles.emptyGlowBottom} />
+
+        <View style={styles.emptyContent}>
+          <View style={styles.emptyIllustrationWrap}>
+            <Svg width={124} height={124} viewBox="0 0 124 124">
+              <Defs>
+                <SvgLinearGradient id="emptyCardGradient" x1="0" y1="0" x2="1" y2="1">
+                  <Stop offset="0%" stopColor="#6B45BF" />
+                  <Stop offset="100%" stopColor="#3A2286" />
+                </SvgLinearGradient>
+              </Defs>
+              <Rect x={16} y={22} width={92} height={80} rx={24} fill="url(#emptyCardGradient)" />
+              <Rect
+                x={30}
+                y={36}
+                width={64}
+                height={34}
+                rx={10}
+                fill="rgba(213, 255, 120, 0.16)"
+                stroke="rgba(213, 255, 120, 0.5)"
+                strokeWidth={1.5}
+              />
+              <Circle cx={62} cy={88} r={7} fill="#D5FF78" />
+              <Circle cx={92} cy={31} r={16} fill="rgba(213, 255, 120, 0.22)" />
+              <Path
+                d="M92 24v8l5 3"
+                stroke="#1B1533"
+                strokeWidth={2.4}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </Svg>
+          </View>
+
+          <Text style={styles.emptyTitle}>Oops, no matches yet</Text>
+          <Text style={styles.emptySubtitle}>
+            We are refreshing recommendations. Please check back later.
+          </Text>
+        </View>
+      </View>
+    );
   }
 
   const activePhoto = photos[currentPhotoIndex] ?? photos[0];
@@ -352,7 +404,12 @@ export function ProfileHeroCard({ profiles, style, onDecision }: ProfileHeroCard
 
             <View style={[styles.bottomContent, styles.nextBottomContent]}>
               <View style={styles.profileInfo}>
-                <Text style={styles.nameText}>{`${nextProfile.name}, ${nextProfile.age}`}</Text>
+                <View style={styles.nameRow}>
+                  <Text style={styles.nameText}>{`${nextProfile.name}, ${nextProfile.age}`}</Text>
+                  {nextProfile.isVerified ? (
+                    <MaterialCommunityIcons name="check-decagram" size={22} color="#F6D84E" />
+                  ) : null}
+                </View>
                 <View style={styles.roleRow}>
                   <MaterialCommunityIcons name="home" size={16} color="#FFFFFF" />
                   <Text style={styles.roleText}>{nextProfile.role}</Text>
@@ -441,7 +498,12 @@ export function ProfileHeroCard({ profiles, style, onDecision }: ProfileHeroCard
                     ],
                   },
                 ]}>
-                <Text style={styles.nameText}>{`${currentProfile.name}, ${currentProfile.age}`}</Text>
+                <View style={styles.nameRow}>
+                  <Text style={styles.nameText}>{`${currentProfile.name}, ${currentProfile.age}`}</Text>
+                  {currentProfile.isVerified ? (
+                    <MaterialCommunityIcons name="check-decagram" size={22} color="#F6D84E" />
+                  ) : null}
+                </View>
                 <View style={styles.roleRow}>
                   <MaterialCommunityIcons name="home" size={16} color="#FFFFFF" />
                   <Text style={styles.roleText}>{currentProfile.role}</Text>
@@ -546,6 +608,60 @@ const styles = StyleSheet.create({
   },
   emptyState: {
     backgroundColor: '#2E1A63',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  emptyGlowTop: {
+    position: 'absolute',
+    top: -46,
+    right: -34,
+    width: 210,
+    height: 210,
+    borderRadius: 105,
+    backgroundColor: 'rgba(213, 255, 120, 0.12)',
+  },
+  emptyGlowBottom: {
+    position: 'absolute',
+    bottom: -52,
+    left: -42,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: 'rgba(255, 76, 133, 0.1)',
+  },
+  emptyContent: {
+    width: '100%',
+    maxWidth: 328,
+    borderRadius: 28,
+    paddingHorizontal: 20,
+    paddingVertical: 26,
+    borderWidth: 1.5,
+    borderColor: 'rgba(220, 202, 255, 0.32)',
+    backgroundColor: 'rgba(58, 34, 134, 0.66)',
+    alignItems: 'center',
+  },
+  emptyIllustrationWrap: {
+    width: 124,
+    height: 124,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  emptyTitle: {
+    color: '#FFFFFF',
+    fontSize: 24,
+    lineHeight: 30,
+    textAlign: 'center',
+    fontFamily: 'Prompt-Bold',
+  },
+  emptySubtitle: {
+    marginTop: 8,
+    color: '#DCCAFF',
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+    fontFamily: 'Prompt-SemiBold',
   },
   nextLayer: {
     ...StyleSheet.absoluteFillObject,
@@ -619,6 +735,12 @@ const styles = StyleSheet.create({
     fontSize: 30,
     fontFamily: 'Prompt-Bold',
     letterSpacing: 0.2,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
   },
   roleRow: {
     marginTop: 4,

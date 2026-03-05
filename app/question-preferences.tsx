@@ -1,5 +1,5 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
 import {
   PanResponder,
@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useOnboardingProfileStore } from '@/context/onboarding-profile-store';
+import { goBackOrReplace } from '@/lib/navigation';
 import {
   type AccommodationType,
   type BudgetRange,
@@ -174,6 +175,11 @@ function OptionRow<T extends string>({
 
 export default function PreferencesQuestionScreen() {
   const router = useRouter();
+  const { from } = useLocalSearchParams<{ from?: string | string[] }>();
+  const fromProfile = (Array.isArray(from) ? from[0] : from) === 'profile';
+  const handleBackPress = React.useCallback(() => {
+    goBackOrReplace(router, fromProfile ? '/profile' : '/start');
+  }, [fromProfile, router]);
   const { draft, setPreferences } = useOnboardingProfileStore();
   const [accommodation, setAccommodation] = React.useState<AccommodationType>(draft.accommodation);
   const [roommateGender, setRoommateGender] = React.useState<RoommateGenderPreference>(
@@ -189,14 +195,14 @@ export default function PreferencesQuestionScreen() {
       preferredRoommateGender: roommateGender,
       budgetRange,
     });
-    router.push('/question-personality');
-  }, [accommodation, budgetRange, roommateGender, router, setPreferences]);
+    router.push(fromProfile ? '/question-personality?from=profile' : '/question-personality');
+  }, [accommodation, budgetRange, roommateGender, router, setPreferences, fromProfile]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.contentWrap}>
         <View style={styles.headerRow}>
-          <Pressable style={styles.backButton} onPress={() => router.back()}>
+          <Pressable style={styles.backButton} onPress={handleBackPress}>
             <MaterialCommunityIcons name="arrow-left" size={28} color="#FFFFFF" />
           </Pressable>
           <Text style={styles.headerTitle}>Living Preferences</Text>

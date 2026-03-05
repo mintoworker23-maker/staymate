@@ -1,71 +1,243 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, type ImageSourcePropType, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BrandedPromptModal } from '@/components/branded-prompt-modal';
 import { MessageUserButton } from '@/components/message-user-button';
 import { useMatchFeedStore } from '@/context/match-feed-store';
+import { useMatchRequestStore } from '@/context/match-request-store';
 import { matchPeople } from '@/data/people';
+import { goBackOrReplace } from '@/lib/navigation';
+import { getUserProfile } from '@/lib/user-profile';
+import type { UserProfile } from '@/types/user-profile';
+
+const DEFAULT_PERSON_AVATAR = require('@/assets/images/image.png');
+
+function formatAccommodationLabel(value: UserProfile['accommodation']) {
+  if (value === 'bedsitter') return 'Bedsitter';
+  if (value === 'studio') return 'Studio';
+  return 'One Bedroom';
+}
+
+function formatGenderPreferenceLabel(value: UserProfile['preferredRoommateGender']) {
+  if (value === 'women') return 'Prefers women';
+  if (value === 'men') return 'Prefers men';
+  return 'Any gender';
+}
+
+function formatRoommateAccommodationLabel(value: UserProfile['roommateAccommodationPreference']) {
+  if (value === 'has-accommodation') return 'Wants roommate with accommodation';
+  if (value === 'looking') return 'Wants roommate looking too';
+  return 'Any accommodation status';
+}
+
+function buildProfileTags(profile: UserProfile | null, fallbackTags: string[]) {
+  if (!profile) return fallbackTags;
+
+  const selectedTags = [
+    ...profile.lifestyleInterests,
+    ...profile.hobbyInterests,
+  ]
+    .map((tag) => tag.trim())
+    .filter((tag) => tag.length > 0);
+
+  if (selectedTags.length > 0) {
+    return Array.from(new Set(selectedTags)).slice(0, 8);
+  }
+
+  const setupFallbackTags = [
+    formatGenderPreferenceLabel(profile.preferredRoommateGender),
+    profile.hasAccommodation ? 'Has accommodation' : 'Looking for accommodation',
+    formatRoommateAccommodationLabel(profile.roommateAccommodationPreference),
+  ];
+
+  const normalizedSetupTags = setupFallbackTags.filter((tag) => tag.length > 0);
+  if (normalizedSetupTags.length > 0) {
+    return Array.from(new Set(normalizedSetupTags)).slice(0, 8);
+  }
+
+  return fallbackTags;
+}
 
 export default function PersonDetailScreen() {
   const router = useRouter();
+  const handleBackPress = React.useCallback(() => {
+    goBackOrReplace(router, '/home');
+  }, [router]);
   const { rejectPerson } = useMatchFeedStore();
+  const { respondToIncomingRequest, sendRequest, hasOutgoingTo, hasMatchedWith } =
+    useMatchRequestStore();
   const { id, source } = useLocalSearchParams<{ id?: string | string[]; source?: string | string[] }>();
   const [matchRequestPromptVisible, setMatchRequestPromptVisible] = React.useState(false);
+  const [matchRequestPromptTitle, setMatchRequestPromptTitle] = React.useState('Match request sent');
+  const [matchRequestPromptDescription, setMatchRequestPromptDescription] = React.useState('');
+  const [profileFromSetup, setProfileFromSetup] = React.useState<UserProfile | null>(null);
 
   const personId = Array.isArray(id) ? id[0] : id;
   const sourceTab = Array.isArray(source) ? source[0] : source;
-  const person = matchPeople.find((item) => item.id === personId) ?? matchPeople[0];
+  const fallbackPerson = personId ? matchPeople.find((item) => item.id === personId) ?? null : null;
+  const effectivePersonId = personId ?? fallbackPerson?.id ?? '';
   const openedFromRequests = sourceTab === 'requests';
 
+  React.useEffect(() => {
+    let cancelled = false;
+
+    if (!personId) {
+      setProfileFromSetup(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void (async () => {
+      const profile = await getUserProfile(personId).catch(() => null);
+      if (!cancelled) {
+        setProfileFromSetup(profile);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [personId]);
+
+  const personName = profileFromSetup?.fullName || fallbackPerson?.name || 'User';
+  const personAge = profileFromSetup?.age && profileFromSetup.age > 0 ? profileFromSetup.age : fallbackPerson?.age ?? 0;
+  const personRole = profileFromSetup
+    ? formatAccommodationLabel(profileFromSetup.accommodation)
+    : fallbackPerson?.role ?? 'Roommate';
+  const personImageSource: ImageSourcePropType = profileFromSetup?.photoUrls[0]
+    ? { uri: profileFromSetup.photoUrls[0] }
+    : fallbackPerson?.image ?? DEFAULT_PERSON_AVATAR;
+  const personPreferences = buildProfileTags(profileFromSetup, fallbackPerson?.preferences ?? []);
+  const personBio = profileFromSetup
+    ? profileFromSetup.bio.trim() || 'No bio yet'
+    : fallbackPerson?.bio.trim() || 'No bio yet';
+  const personWhatsappNumber =
+    profileFromSetup?.whatsAppNumber.trim() ||
+    profileFromSetup?.phoneNumber.trim() ||
+    fallbackPerson?.whatsappNumber?.trim() ||
+    '';
+  const personIsVerified = Boolean(profileFromSetup?.isVerified ?? fallbackPerson?.isVerified);
+  const personScore = fallbackPerson?.score ?? 88;
+  const personDisplayName = personAge > 0 ? `${personName}, ${personAge}` : personName;
+
   const handleMatchPress = React.useCallback(() => {
-    if (openedFromRequests) {
-      router.push(`/person/match/${person.id}`);
+    if (openedFromRequests && effectivePersonId) {
+      void (async () => {
+        const accepted = await respondToIncomingRequest(effectivePersonId, 'accepted')
+          .then(() => true)
+          .catch(() => false);
+
+        if (!accepted) {
+          setMatchRequestPromptTitle('Unable to accept request');
+          setMatchRequestPromptDescription('Please try again in a moment.');
+          setMatchRequestPromptVisible(true);
+          return;
+        }
+
+        router.push(`/person/match/${effectivePersonId}`);
+      })();
       return;
     }
-    setMatchRequestPromptVisible(true);
-  }, [openedFromRequests, person.id, router]);
+
+    if (!effectivePersonId) {
+      setMatchRequestPromptTitle('Unable to send request');
+      setMatchRequestPromptDescription('This profile is missing an id.');
+      setMatchRequestPromptVisible(true);
+      return;
+    }
+
+    if (hasOutgoingTo(effectivePersonId)) {
+      setMatchRequestPromptTitle('Request already sent');
+      setMatchRequestPromptDescription(
+        `${personName} already has your request. You will be notified once they respond.`
+      );
+      setMatchRequestPromptVisible(true);
+      return;
+    }
+
+    if (hasMatchedWith(effectivePersonId)) {
+      setMatchRequestPromptTitle('Already matched');
+      setMatchRequestPromptDescription(`You are already matched with ${personName}.`);
+      setMatchRequestPromptVisible(true);
+      return;
+    }
+
+    void sendRequest(effectivePersonId)
+      .then(() => {
+        setMatchRequestPromptTitle('Match request sent');
+        setMatchRequestPromptDescription(
+          `${personName} has been notified. You will see an update once they respond.`
+        );
+        setMatchRequestPromptVisible(true);
+      })
+      .catch(() => {
+        setMatchRequestPromptTitle('Unable to send request');
+        setMatchRequestPromptDescription('Please try again in a moment.');
+        setMatchRequestPromptVisible(true);
+      });
+  }, [
+    effectivePersonId,
+    hasMatchedWith,
+    hasOutgoingTo,
+    openedFromRequests,
+    personName,
+    respondToIncomingRequest,
+    router,
+    sendRequest,
+  ]);
 
   const handleRejectPress = React.useCallback(() => {
-    rejectPerson(person.id);
-    router.back();
-  }, [person.id, rejectPerson, router]);
+    if (openedFromRequests && effectivePersonId) {
+      void respondToIncomingRequest(effectivePersonId, 'rejected');
+    }
+    if (effectivePersonId) {
+      rejectPerson(effectivePersonId);
+    }
+    goBackOrReplace(router, '/home');
+  }, [effectivePersonId, openedFromRequests, rejectPerson, respondToIncomingRequest, router]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <Pressable style={styles.floatingBackButton} onPress={() => router.back()}>
+      <Pressable style={styles.floatingBackButton} onPress={handleBackPress}>
         <MaterialCommunityIcons name="arrow-left" size={34} color="#FFFFFF" />
       </Pressable>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.contentContainer}>
         <View style={styles.imageWrap}>
-          <Image source={person.image} style={styles.image} />
+          <Image source={personImageSource} style={styles.image} />
 
           <View style={styles.scoreBadge}>
             <MaterialCommunityIcons name="handshake-outline" size={24} color="#1B1533" />
-            <Text style={styles.scoreText}>{`${person.score}%`}</Text>
+            <Text style={styles.scoreText}>{`${personScore}%`}</Text>
           </View>
         </View>
 
         <View style={styles.metaSection}>
-          <Text style={styles.nameText}>{`${person.name}, ${person.age}`}</Text>
+          <View style={styles.nameRow}>
+            <Text style={styles.nameText}>{personDisplayName}</Text>
+            {personIsVerified ? (
+              <MaterialCommunityIcons name="check-decagram" size={32} color="#F6D84E" />
+            ) : null}
+          </View>
           <View style={styles.roleRow}>
             <MaterialCommunityIcons name="home" size={16} color="#FFFFFF" />
-            <Text style={styles.roleText}>{person.role}</Text>
+            <Text style={styles.roleText}>{personRole}</Text>
           </View>
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.prefRow}>
-          {person.preferences.map((label, index) => (
+          {(personPreferences.length > 0 ? personPreferences : ['No preferences yet']).map((label, index) => (
             <View key={`${label}-${index}`} style={styles.prefChip}>
               <Text style={styles.prefText}>{label}</Text>
             </View>
           ))}
         </ScrollView>
 
-        <Text style={styles.bioText}>{person.bio}</Text>
+        <Text style={styles.bioText}>{personBio}</Text>
 
         <View style={styles.actionsRow}>
           <Pressable style={[styles.actionButton, styles.rejectButton]} onPress={handleRejectPress}>
@@ -79,10 +251,12 @@ export default function PersonDetailScreen() {
           <MessageUserButton
             variant="icon"
             target={{
-              matchPersonId: person.id,
-              name: person.name,
-              age: person.age,
-              avatar: person.image,
+              matchPersonId: effectivePersonId || 'unknown-person',
+              name: personName,
+              age: personAge,
+              avatar: personImageSource,
+              isVerified: personIsVerified,
+              whatsappNumber: personWhatsappNumber,
             }}
           />
         </View>
@@ -90,8 +264,8 @@ export default function PersonDetailScreen() {
 
       <BrandedPromptModal
         visible={matchRequestPromptVisible}
-        title="Match request sent"
-        description={`${person.name} has been notified. You will see an update once they respond.`}
+        title={matchRequestPromptTitle}
+        description={matchRequestPromptDescription}
         actions={[
           {
             label: 'Done',
@@ -163,6 +337,12 @@ const styles = StyleSheet.create({
     fontSize: 48,
     lineHeight: 52,
     fontFamily: 'Prompt-Bold',
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
   },
   roleRow: {
     marginTop: 2,

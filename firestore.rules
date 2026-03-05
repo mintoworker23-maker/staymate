@@ -1,0 +1,84 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function hasParticipants(data) {
+      return data.participants is list && data.participants.size() == 2;
+    }
+
+    function isParticipant(data) {
+      return isSignedIn() && hasParticipants(data) && request.auth.uid in data.participants;
+    }
+
+    function isValidRequestStatus(value) {
+      return value in ['pending', 'accepted', 'rejected', 'cancelled'];
+    }
+
+    match /users/{uid} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isSelf(uid);
+    }
+
+    match /chats/{chatId} {
+      allow read: if isParticipant(resource.data);
+      allow create: if isParticipant(request.resource.data);
+      allow update: if isParticipant(resource.data) || isParticipant(request.resource.data);
+      allow delete: if isParticipant(resource.data);
+
+      match /messages/{messageId} {
+        function chatData() {
+          return get(/databases/$(database)/documents/chats/$(chatId)).data;
+        }
+
+        function isChatParticipant() {
+          return isParticipant(chatData());
+        }
+
+        allow read: if isChatParticipant();
+        allow create: if isChatParticipant() && request.resource.data.senderId == request.auth.uid;
+        allow update: if false;
+        allow delete: if isChatParticipant() && resource.data.senderId == request.auth.uid;
+      }
+    }
+
+    match /matchRequests/{requestId} {
+      function isRequestParticipant(data) {
+        return isSignedIn() && request.auth.uid in [data.fromUid, data.toUid];
+      }
+
+      function isRequestShape(data) {
+        return data.fromUid is string &&
+               data.toUid is string &&
+               data.fromUid.size() > 0 &&
+               data.toUid.size() > 0 &&
+               data.fromUid != data.toUid &&
+               data.status is string &&
+               isValidRequestStatus(data.status);
+      }
+
+      allow read: if isRequestParticipant(resource.data);
+
+      allow create: if isRequestShape(request.resource.data) &&
+                    request.auth.uid == request.resource.data.fromUid;
+
+      allow update: if isRequestParticipant(resource.data) &&
+                    isRequestShape(request.resource.data) &&
+                    request.resource.data.fromUid == resource.data.fromUid &&
+                    request.resource.data.toUid == resource.data.toUid;
+
+      allow delete: if isRequestParticipant(resource.data);
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

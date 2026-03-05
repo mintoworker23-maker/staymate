@@ -1,36 +1,27 @@
 import React from 'react';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useRouter } from 'expo-router';
+import type { FirestoreError } from 'firebase/firestore';
 import { FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomNavigation } from '@/components/bottom-navigation';
 import { ExpandingSearch } from '@/components/expanding-search';
+import { useAuthStore } from '@/context/auth-store';
+import { useChatStore } from '@/context/chat-store';
 import { useMatchFeedStore } from '@/context/match-feed-store';
+import { useMatchRequestStore } from '@/context/match-request-store';
+import { type MatchPerson } from '@/data/people';
+import {
+  isDiscoverableProfile,
+  mapUserProfileToMatchPerson,
+} from '@/lib/discovery-people';
+import {
+  subscribeToDiscoverUserProfiles,
+  subscribeToUserProfile,
+} from '@/lib/user-profile';
 
-type RequestPerson = {
-  id: string;
-  name: string;
-  age: number;
-  role: string;
-  score: number;
-  image: ReturnType<typeof require>;
-};
-
-const requestPeople: RequestPerson[] = [
-  { id: '1', name: 'Teddy Omondi', age: 21, role: 'Bedsitter', score: 94, image: require('@/assets/images/image.png') },
-  { id: '2', name: 'Akinyi Moraa', age: 23, role: 'Studio', score: 91, image: require('@/assets/images/home-profile.png') },
-  { id: '3', name: 'Mark Otieno', age: 24, role: 'One Bedroom', score: 88, image: require('@/assets/images/image.png') },
-  { id: '4', name: 'Njeri Maina', age: 22, role: 'Bedsitter', score: 93, image: require('@/assets/images/home-profile.png') },
-  { id: '5', name: 'Kelvin Ouma', age: 25, role: 'Studio', score: 90, image: require('@/assets/images/image.png') },
-  { id: '6', name: 'Anne Wanjiru', age: 20, role: 'Bedsitter', score: 92, image: require('@/assets/images/home-profile.png') },
-  { id: '7', name: 'Brian Ochieng', age: 26, role: 'One Bedroom', score: 89, image: require('@/assets/images/image.png') },
-  { id: '8', name: 'Faith Anyango', age: 22, role: 'Studio', score: 95, image: require('@/assets/images/home-profile.png') },
-  { id: '9', name: 'Kevin Mutiso', age: 24, role: 'Bedsitter', score: 87, image: require('@/assets/images/image.png') },
-  { id: '10', name: 'Mercy Achieng', age: 23, role: 'One Bedroom', score: 94, image: require('@/assets/images/home-profile.png') },
-];
-
-function RequestCard({ person, onPress }: { person: RequestPerson; onPress: () => void }) {
+function RequestCard({ person, onPress }: { person: MatchPerson; onPress: () => void }) {
   return (
     <Pressable style={styles.cardWrap} onPress={onPress}>
       <View style={styles.cardImageWrap}>
@@ -40,7 +31,12 @@ function RequestCard({ person, onPress }: { person: RequestPerson; onPress: () =
           <Text style={styles.scoreText}>{`${person.score}%`}</Text>
         </View>
       </View>
-      <Text style={styles.cardName}>{`${person.name}, ${person.age}`}</Text>
+      <View style={styles.cardNameRow}>
+        <Text style={styles.cardName}>{`${person.name}, ${person.age}`}</Text>
+        {person.isVerified ? (
+          <MaterialCommunityIcons name="check-decagram" size={18} color="#F6D84E" />
+        ) : null}
+      </View>
       <Text style={styles.cardRole}>{person.role}</Text>
     </Pressable>
   );
@@ -49,14 +45,83 @@ function RequestCard({ person, onPress }: { person: RequestPerson; onPress: () =
 export default function RequestsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { user } = useAuthStore();
+  const { totalUnreadCount } = useChatStore();
   const { rejectedPersonIds, matchedPersonIds } = useMatchFeedStore();
+  const { incomingRequestUserIds, incomingCount } = useMatchRequestStore();
+  const [databasePeople, setDatabasePeople] = React.useState<MatchPerson[]>([]);
+  const [currentInstitutionKey, setCurrentInstitutionKey] = React.useState('');
+  const [hasLoadedCurrentProfile, setHasLoadedCurrentProfile] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState('');
+  const [discoverErrorMessage, setDiscoverErrorMessage] = React.useState<string | null>(null);
+
+  const handleDiscoverError = React.useCallback((error: FirestoreError) => {
+    if (error.code === 'permission-denied') {
+      setDiscoverErrorMessage(
+        'Unable to load requests. Firestore read permission is missing for users.'
+      );
+      return;
+    }
+
+    setDiscoverErrorMessage('Unable to load requests right now. Please try again.');
+  }, []);
+
+  React.useEffect(() => {
+    if (!user) {
+      setCurrentInstitutionKey('');
+      setHasLoadedCurrentProfile(false);
+      return;
+    }
+
+    const unsubscribe = subscribeToUserProfile(
+      user.uid,
+      (profile) => {
+        setCurrentInstitutionKey(profile?.institutionKey ?? '');
+        setHasLoadedCurrentProfile(true);
+      },
+      () => {
+        setCurrentInstitutionKey('');
+        setHasLoadedCurrentProfile(true);
+      }
+    );
+
+    return unsubscribe;
+  }, [user]);
+
+  React.useEffect(() => {
+    if (!user || !hasLoadedCurrentProfile) {
+      setDatabasePeople([]);
+      setDiscoverErrorMessage(null);
+      return;
+    }
+
+    const unsubscribe = subscribeToDiscoverUserProfiles(
+      user.uid,
+      (profilesFromDb) => {
+        const discoverable = profilesFromDb
+          .filter(isDiscoverableProfile)
+          .map(mapUserProfileToMatchPerson);
+        setDatabasePeople(discoverable);
+        setDiscoverErrorMessage(null);
+      },
+      handleDiscoverError,
+      {
+        institutionKey: currentInstitutionKey,
+      }
+    );
+
+    return unsubscribe;
+  }, [currentInstitutionKey, handleDiscoverError, hasLoadedCurrentProfile, user]);
 
   const filteredPeople = React.useMemo(() => {
     const rejectedIds = new Set(rejectedPersonIds);
     const matchedIds = new Set(matchedPersonIds);
-    const availablePeople = requestPeople.filter(
-      (person) => !rejectedIds.has(person.id) && !matchedIds.has(person.id)
+    const incomingIds = new Set(incomingRequestUserIds);
+    const availablePeople = databasePeople.filter(
+      (person) =>
+        incomingIds.has(person.id) &&
+        !rejectedIds.has(person.id) &&
+        !matchedIds.has(person.id)
     );
     const query = searchQuery.trim().toLowerCase();
     if (!query) return availablePeople;
@@ -64,7 +129,7 @@ export default function RequestsScreen() {
     return availablePeople.filter((person) => {
       return person.name.toLowerCase().includes(query) || person.role.toLowerCase().includes(query);
     });
-  }, [matchedPersonIds, rejectedPersonIds, searchQuery]);
+  }, [databasePeople, incomingRequestUserIds, matchedPersonIds, rejectedPersonIds, searchQuery]);
   const navigationBottom = Math.max(insets.bottom + 12, 34);
   const listBottomPadding = 145 + (navigationBottom - 34);
 
@@ -100,7 +165,11 @@ export default function RequestsScreen() {
         columnWrapperStyle={styles.rowGap}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.listContent, { paddingBottom: listBottomPadding }]}
-        ListEmptyComponent={<Text style={styles.emptyText}>No match requests found.</Text>}
+        ListEmptyComponent={
+          <Text style={styles.emptyText}>
+            {discoverErrorMessage ?? 'No match requests found.'}
+          </Text>
+        }
       />
 
       <BottomNavigation
@@ -120,8 +189,8 @@ export default function RequestsScreen() {
         items={[
           { icon: 'home' },
           { icon: 'target' },
-          { icon: 'chat-outline' },
-          { icon: 'handshake-outline' },
+          { icon: 'chat-outline', badgeCount: totalUnreadCount },
+          { icon: 'handshake-outline', badgeCount: incomingCount },
         ]}
       />
     </SafeAreaView>
@@ -196,7 +265,13 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 17,
     fontFamily: 'Prompt-Bold',
+  },
+  cardNameRow: {
     marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
   },
   cardRole: {
     color: '#FFFFFF',
