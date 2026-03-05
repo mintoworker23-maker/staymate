@@ -14,12 +14,23 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useOnboardingProfileStore } from '@/context/onboarding-profile-store';
-import { sendPasswordReset, signInOrCreateWithPassword } from '@/lib/auth';
+import {
+  loginWithEmailAndPassword,
+  registerWithEmailAndPassword,
+  sendPasswordReset,
+} from '@/lib/auth';
 import { getLastLoginEmail, saveLastLoginEmail } from '@/lib/auth-session';
-import { getUserProfile } from '@/lib/user-profile';
+import {
+  createInitialUserProfile,
+  getUserProfile,
+  hasMinimumProfilePhotos,
+  isUserProfileComplete,
+} from '@/lib/user-profile';
+import type { UserProfile } from '@/types/user-profile';
 
 const QUESTION_STEPS = 7;
 const MIN_PASSWORD_LENGTH = 6;
+const PROFILE_LOOKUP_MAX_WAIT_MS = 450;
 
 function maskEmail(email: string) {
   const normalized = email.trim().toLowerCase();
@@ -38,12 +49,32 @@ function getFirebaseErrorCode(error: unknown) {
   return typeof code === 'string' ? code : null;
 }
 
+async function getUserProfileWithTimeout(uid: string, timeoutMs: number) {
+  const timeoutToken = Symbol('profile-timeout');
+  const timeoutPromise = new Promise<typeof timeoutToken>((resolve) => {
+    setTimeout(() => resolve(timeoutToken), timeoutMs);
+  });
+  const profilePromise = getUserProfile(uid).catch(() => null);
+
+  const result = await Promise.race<UserProfile | null | typeof timeoutToken>([
+    profilePromise,
+    timeoutPromise,
+  ]);
+
+  if (result === timeoutToken) {
+    return { timedOut: true as const, profile: null };
+  }
+
+  return { timedOut: false as const, profile: result };
+}
+
 export default function UniversityCodeScreen() {
   const router = useRouter();
   const { resetDraft, setAccountEmail } = useOnboardingProfileStore();
   const params = useLocalSearchParams<{ email?: string; mode?: string }>();
   const paramEmail = typeof params.email === 'string' ? params.email : '';
-  const isLoginMode = params.mode === 'login';
+  const mode = params.mode === 'login' ? 'login' : 'register';
+  const isLoginMode = mode === 'login';
   const [resolvedEmail, setResolvedEmail] = React.useState(paramEmail);
   const [isResolvingEmail, setIsResolvingEmail] = React.useState(!paramEmail);
 
@@ -115,39 +146,110 @@ export default function UniversityCodeScreen() {
     setInfoMessage(null);
 
     void (async () => {
+      const authenticate =
+        mode === 'login' ? loginWithEmailAndPassword : registerWithEmailAndPassword;
+
+      let uid = '';
       try {
-        const credentials = await signInOrCreateWithPassword(resolvedEmail, normalizedPassword);
-        const existingProfile = await getUserProfile(credentials.user.uid);
-
-        if (existingProfile) {
-          resetDraft();
-          router.replace('/home');
-          return;
-        }
-
-        resetDraft();
-        setAccountEmail(resolvedEmail);
-        router.replace('/question-basic-info');
+        const credentials = await authenticate(resolvedEmail, normalizedPassword);
+        uid = credentials.user.uid;
       } catch (error) {
         const code = getFirebaseErrorCode(error);
-        if (
+        if (mode === 'register' && code === 'auth/email-already-in-use') {
+          setErrorMessage('This email is already registered. Use Login from start screen.');
+        } else if (
           code === 'auth/invalid-credential' ||
           code === 'auth/wrong-password' ||
           code === 'auth/invalid-password'
         ) {
           setErrorMessage('Incorrect password. Please try again.');
+        } else if (mode === 'login' && code === 'auth/user-not-found') {
+          setErrorMessage('No account found for this email. Use Register first.');
         } else if (code === 'auth/weak-password') {
           setErrorMessage('Password is too weak. Use at least 6 characters.');
         } else if (code === 'auth/too-many-requests') {
           setErrorMessage('Too many attempts. Please wait and try again.');
         } else {
-          setErrorMessage('Unable to sign in right now. Please try again.');
+          setErrorMessage(
+            mode === 'login'
+              ? 'Unable to sign in right now. Please try again.'
+              : 'Unable to create account right now. Please try again.'
+          );
         }
-      } finally {
-        setIsSubmitting(false);
+        return;
       }
-    })();
-  }, [isSubmitting, password, resetDraft, resolvedEmail, router, setAccountEmail]);
+
+      const routeToOnboarding = () => {
+        resetDraft();
+        setAccountEmail(resolvedEmail);
+        router.replace('/question-basic-info');
+      };
+      const routeToCompletedDestination = (profile: UserProfile) => {
+        resetDraft();
+        router.replace(hasMinimumProfilePhotos(profile) ? '/home' : '/question-photos');
+      };
+
+      if (mode === 'register') {
+        routeToOnboarding();
+
+        void (async () => {
+          try {
+            await createInitialUserProfile(uid, resolvedEmail);
+          } catch {
+            // Non-blocking: registration continues even if profile bootstrap write is delayed.
+          }
+        })();
+        return;
+      }
+
+      const lookup = await getUserProfileWithTimeout(uid, PROFILE_LOOKUP_MAX_WAIT_MS);
+
+      if (lookup.timedOut) {
+        router.replace('/home');
+
+        void (async () => {
+          const profile = await getUserProfile(uid).catch(() => null);
+          if (!profile) {
+            await createInitialUserProfile(uid, resolvedEmail).catch(() => {});
+            routeToOnboarding();
+            return;
+          }
+
+          if (!isUserProfileComplete(profile)) {
+            routeToOnboarding();
+            return;
+          }
+
+          if (!hasMinimumProfilePhotos(profile)) {
+            resetDraft();
+            router.replace('/question-photos');
+          }
+        })();
+        return;
+      }
+
+      if (!lookup.profile) {
+        routeToOnboarding();
+
+        void (async () => {
+          try {
+            await createInitialUserProfile(uid, resolvedEmail);
+          } catch {
+            // Continue even if initial profile write fails.
+          }
+        })();
+        return;
+      }
+
+      if (isUserProfileComplete(lookup.profile)) {
+        routeToCompletedDestination(lookup.profile);
+      } else {
+        routeToOnboarding();
+      }
+    })().finally(() => {
+      setIsSubmitting(false);
+    });
+  }, [isSubmitting, mode, password, resetDraft, resolvedEmail, router, setAccountEmail]);
 
   const handleSendReset = React.useCallback(() => {
     if (isSendingReset) return;
@@ -188,10 +290,10 @@ export default function UniversityCodeScreen() {
           <Pressable style={styles.backButton} onPress={() => router.back()}>
             <MaterialCommunityIcons name="arrow-left" size={28} color="#FFFFFF" />
           </Pressable>
-          <Text style={styles.headerTitle}>{isLoginMode ? 'Login' : 'Account Password'}</Text>
+          <Text style={styles.headerTitle}>{isLoginMode ? 'Login' : 'Create Password'}</Text>
         </View>
 
-        <Text style={styles.questionText}>Question 2/7</Text>
+        <Text style={styles.questionText}>{isLoginMode ? 'Login' : 'Question 2/7'}</Text>
 
         <View style={styles.progressRow}>
           {Array.from({ length: QUESTION_STEPS }).map((_, index) => (
@@ -208,7 +310,9 @@ export default function UniversityCodeScreen() {
         <Text style={styles.infoText}>
           {isResolvingEmail
             ? 'Loading your login account...'
-            : `Enter your password for ${maskEmail(resolvedEmail || 'your university email')}.`}
+            : isLoginMode
+              ? `Enter your password for ${maskEmail(resolvedEmail || 'your university email')}.`
+              : `Create a password for ${maskEmail(resolvedEmail || 'your university email')}.`}
         </Text>
 
         <View style={[styles.codeFieldWrap, errorMessage ? styles.codeFieldWrapError : null]}>
@@ -239,17 +343,30 @@ export default function UniversityCodeScreen() {
           </Pressable>
         </View>
 
-        <Pressable style={styles.resendRow} onPress={handleSendReset} disabled={isSendingReset}>
-          {isSendingReset ? <ActivityIndicator size="small" color="#D5FF78" style={styles.resetSpinner} /> : null}
-          <Text style={styles.resendText}>Forgot password? </Text>
-          <Text style={styles.resendAccent}>Send reset email</Text>
-        </Pressable>
+        {isLoginMode ? (
+          <Pressable style={styles.resendRow} onPress={handleSendReset} disabled={isSendingReset}>
+            {isSendingReset ? (
+              <ActivityIndicator size="small" color="#D5FF78" style={styles.resetSpinner} />
+            ) : null}
+            <Text style={styles.resendText}>Forgot password? </Text>
+            <Text style={styles.resendAccent}>Send reset email</Text>
+          </Pressable>
+        ) : (
+          <Pressable
+            style={styles.resendRow}
+            onPress={() => router.replace({ pathname: '/university-code', params: { mode: 'login' } })}>
+            <Text style={styles.resendText}>Already have an account? </Text>
+            <Text style={styles.resendAccent}>Login</Text>
+          </Pressable>
+        )}
 
         {infoMessage ? <Text style={styles.infoStatusText}>{infoMessage}</Text> : null}
         {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
-        {isLoginMode && !resolvedEmail ? (
-          <Pressable style={styles.useEmailButton} onPress={() => router.replace('/university-login')}>
-            <Text style={styles.useEmailButtonText}>Use university email instead</Text>
+        {isLoginMode ? (
+          <Pressable
+            style={styles.useEmailButton}
+            onPress={() => router.replace({ pathname: '/university-login', params: { mode: 'login' } })}>
+            <Text style={styles.useEmailButtonText}>Use another account</Text>
           </Pressable>
         ) : null}
 
@@ -259,7 +376,9 @@ export default function UniversityCodeScreen() {
           style={[styles.confirmButton, isSubmitting ? styles.confirmButtonDisabled : null]}
           onPress={handleConfirm}
           disabled={isSubmitting || isResolvingEmail}>
-          <Text style={styles.confirmButtonText}>{isSubmitting ? 'Signing in...' : 'Confirm'}</Text>
+          <Text style={styles.confirmButtonText}>
+            {isSubmitting ? (isLoginMode ? 'Signing in...' : 'Creating account...') : 'Confirm'}
+          </Text>
         </Pressable>
       </KeyboardAvoidingView>
     </SafeAreaView>

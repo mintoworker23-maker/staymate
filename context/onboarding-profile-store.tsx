@@ -5,6 +5,7 @@ import {
   type AccommodationType,
   type BudgetRange,
   type OnboardingDraft,
+  type RoommateAccommodationPreference,
   type RoommateGenderPreference,
   type UserGender,
 } from '@/types/user-profile';
@@ -26,6 +27,7 @@ type OnboardingProfileStoreValue = {
     preferredRoommateGender: RoommateGenderPreference;
     budgetRange: BudgetRange;
   }) => void;
+  setRoommateAccommodationPreference: (value: RoommateAccommodationPreference) => void;
   setHasAccommodation: (value: boolean) => void;
   setInterests: (payload: { lifestyleInterests: string[]; hobbyInterests: string[] }) => void;
 };
@@ -81,6 +83,13 @@ export function OnboardingProfileStoreProvider({ children }: { children: React.R
     []
   );
 
+  const setRoommateAccommodationPreference = React.useCallback(
+    (value: RoommateAccommodationPreference) => {
+      setDraft((prev) => ({ ...prev, roommateAccommodationPreference: value }));
+    },
+    []
+  );
+
   const setHasAccommodation = React.useCallback((value: boolean) => {
     setDraft((prev) => ({ ...prev, hasAccommodation: value }));
   }, []);
@@ -103,10 +112,20 @@ export function OnboardingProfileStoreProvider({ children }: { children: React.R
       setAccountEmail,
       setBasicInfo,
       setPreferences,
+      setRoommateAccommodationPreference,
       setHasAccommodation,
       setInterests,
     }),
-    [draft, resetDraft, setAccountEmail, setBasicInfo, setPreferences, setHasAccommodation, setInterests]
+    [
+      draft,
+      resetDraft,
+      setAccountEmail,
+      setBasicInfo,
+      setPreferences,
+      setRoommateAccommodationPreference,
+      setHasAccommodation,
+      setInterests,
+    ]
   );
 
   return (

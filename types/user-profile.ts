@@ -1,6 +1,7 @@
 export type UserGender = 'female' | 'male' | 'non-binary';
 export type AccommodationType = 'bedsitter' | 'studio' | 'one-bedroom';
 export type RoommateGenderPreference = 'women' | 'men' | 'any';
+export type RoommateAccommodationPreference = 'has-accommodation' | 'looking' | 'any';
 
 export type BudgetRange = [number, number];
 
@@ -15,10 +16,13 @@ export type UserProfile = {
   whatsAppNumber: string;
   accommodation: AccommodationType;
   preferredRoommateGender: RoommateGenderPreference;
+  roommateAccommodationPreference: RoommateAccommodationPreference;
+  photoUrls: string[];
   budgetRange: BudgetRange;
   hasAccommodation: boolean;
   lifestyleInterests: string[];
   hobbyInterests: string[];
+  onboardingCompleted: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -35,8 +39,9 @@ export type OnboardingDraft = {
   whatsAppNumber: string;
   accommodation: AccommodationType;
   preferredRoommateGender: RoommateGenderPreference;
-  budgetRange: BudgetRange;
+  roommateAccommodationPreference: RoommateAccommodationPreference | null;
   hasAccommodation: boolean | null;
+  budgetRange: BudgetRange;
   lifestyleInterests: string[];
   hobbyInterests: string[];
 };
@@ -51,8 +56,9 @@ export const DEFAULT_ONBOARDING_DRAFT: OnboardingDraft = {
   whatsAppNumber: '',
   accommodation: 'studio',
   preferredRoommateGender: 'any',
-  budgetRange: [5000, 8000],
+  roommateAccommodationPreference: null,
   hasAccommodation: null,
+  budgetRange: [5000, 8000],
   lifestyleInterests: [],
   hobbyInterests: [],
 };

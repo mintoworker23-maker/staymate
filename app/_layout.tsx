@@ -74,6 +74,7 @@ export default function RootLayout() {
                     <Stack.Screen name="question-personality" options={{ headerShown: false }} />
                     <Stack.Screen name="question-interests" options={{ headerShown: false }} />
                     <Stack.Screen name="question-ready" options={{ headerShown: false }} />
+                    <Stack.Screen name="question-photos" options={{ headerShown: false }} />
                     <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                     <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
                     <Stack.Screen name="profile" options={{ headerShown: false }} />

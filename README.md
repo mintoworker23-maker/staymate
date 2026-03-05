@@ -58,7 +58,7 @@ To learn more about developing your project with Expo, look at the following res
 4. Use Firebase services anywhere in the app:
 
    ```ts
-   import { auth, db, storage, getFirebaseAnalytics } from '@/lib/firebase';
+   import { auth, db, getFirebaseAnalytics } from '@/lib/firebase';
    ```
 
    On web, initialize Analytics when needed:
@@ -69,6 +69,24 @@ To learn more about developing your project with Expo, look at the following res
 
 5. If Android native Firebase features fail, confirm `android.package` in `app.json`
    matches `client[0].client_info.android_client_info.package_name` in `google-services.json`.
+
+## Cloudinary setup (profile photos)
+
+1. Create a Cloudinary account and copy your **Cloud name**.
+2. In Cloudinary Settings -> Upload, create an **unsigned upload preset**.
+3. Add these variables to `.env`:
+
+   ```bash
+   EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME=your-cloud-name
+   EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET=your-unsigned-preset
+   EXPO_PUBLIC_CLOUDINARY_UPLOAD_FOLDER=staymate/profile-images
+   ```
+
+4. Restart Expo after editing env vars:
+
+   ```bash
+   npx expo start -c
+   ```
 
 ## Join the community
 

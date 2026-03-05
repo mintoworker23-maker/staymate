@@ -1,5 +1,5 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
 import {
   KeyboardAvoidingView,
@@ -31,6 +31,8 @@ const QUESTION_STEPS = 7;
 
 export default function UniversityLoginScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ mode?: string }>();
+  const mode = params.mode === 'login' ? 'login' : 'register';
   const [email, setEmail] = React.useState('');
   const [agreedToTerms, setAgreedToTerms] = React.useState(true);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
@@ -68,8 +70,8 @@ export default function UniversityLoginScreen() {
     const normalizedEmail = email.trim().toLowerCase();
     setErrorMessage(null);
     void saveLastLoginEmail(normalizedEmail);
-    router.push({ pathname: '/university-code', params: { email: normalizedEmail } });
-  }, [agreedToTerms, email, router]);
+    router.push({ pathname: '/university-code', params: { email: normalizedEmail, mode } });
+  }, [agreedToTerms, email, mode, router]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -80,7 +82,9 @@ export default function UniversityLoginScreen() {
           <Pressable style={styles.backButton} onPress={() => router.back()}>
             <MaterialCommunityIcons name="arrow-left" size={28} color="#FFFFFF" />
           </Pressable>
-          <Text style={styles.headerTitle}>University Verification</Text>
+          <Text style={styles.headerTitle}>
+            {mode === 'register' ? 'University Registration' : 'University Login'}
+          </Text>
         </View>
 
         <Text style={styles.questionText}>Question 1/7</Text>

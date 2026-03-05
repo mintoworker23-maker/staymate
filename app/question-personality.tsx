@@ -5,29 +5,41 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useOnboardingProfileStore } from '@/context/onboarding-profile-store';
+import type { RoommateAccommodationPreference } from '@/types/user-profile';
 
 const QUESTION_STEPS = 7;
 
 const accommodationStatusOptions = [
-  { key: 'yes', label: 'Yes, I already have accommodation' },
+  { key: 'has-accommodation', label: 'Has accommodation' },
+  { key: 'looking', label: 'Still looking' },
+  { key: 'any', label: 'I don’t mind' },
+] as const;
+
+const ownAccommodationOptions = [
+  { key: 'yes', label: 'Yes, I have accommodation' },
   { key: 'no', label: 'No, I am still looking' },
 ] as const;
 
-type AccommodationStatus = (typeof accommodationStatusOptions)[number]['key'];
+type AccommodationStatus = RoommateAccommodationPreference;
+type OwnAccommodationStatus = (typeof ownAccommodationOptions)[number]['key'];
 
 export default function PersonalityQuestionScreen() {
   const router = useRouter();
-  const { draft, setHasAccommodation } = useOnboardingProfileStore();
+  const { draft, setRoommateAccommodationPreference, setHasAccommodation } = useOnboardingProfileStore();
   const [selectedStatus, setSelectedStatus] = React.useState<AccommodationStatus | null>(
+    draft.roommateAccommodationPreference
+  );
+  const [ownAccommodationStatus, setOwnAccommodationStatus] = React.useState<OwnAccommodationStatus | null>(
     draft.hasAccommodation === null ? null : draft.hasAccommodation ? 'yes' : 'no'
   );
 
   const handleConfirm = React.useCallback(() => {
-    if (!selectedStatus) return;
+    if (!selectedStatus || !ownAccommodationStatus) return;
 
-    setHasAccommodation(selectedStatus === 'yes');
+    setRoommateAccommodationPreference(selectedStatus);
+    setHasAccommodation(ownAccommodationStatus === 'yes');
     router.push('/question-interests');
-  }, [router, selectedStatus, setHasAccommodation]);
+  }, [ownAccommodationStatus, router, selectedStatus, setHasAccommodation, setRoommateAccommodationPreference]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -36,7 +48,7 @@ export default function PersonalityQuestionScreen() {
           <Pressable style={styles.backButton} onPress={() => router.back()}>
             <MaterialCommunityIcons name="arrow-left" size={28} color="#FFFFFF" />
           </Pressable>
-          <Text style={styles.headerTitle}>Accommodation status</Text>
+          <Text style={styles.headerTitle}>Roommate preference</Text>
         </View>
 
         <Text style={styles.questionText}>Question 5/7</Text>
@@ -50,7 +62,7 @@ export default function PersonalityQuestionScreen() {
           ))}
         </View>
 
-        <Text style={styles.promptText}>Do you currently have accommodation?</Text>
+        <Text style={styles.promptText}>Roommate should already have accommodation?</Text>
 
         <View style={styles.optionList}>
           {accommodationStatusOptions.map((option) => {
@@ -60,6 +72,35 @@ export default function PersonalityQuestionScreen() {
                 key={option.key}
                 style={[styles.statusOption, isSelected ? styles.statusOptionSelected : styles.statusOptionIdle]}
                 onPress={() => setSelectedStatus(option.key)}>
+                <View style={styles.statusTextWrap}>
+                  <Text
+                    style={[
+                      styles.statusOptionText,
+                      isSelected ? styles.statusOptionTextSelected : styles.statusOptionTextIdle,
+                    ]}>
+                    {option.label}
+                  </Text>
+                </View>
+                {isSelected ? (
+                  <View style={styles.statusCheckWrap}>
+                    <MaterialCommunityIcons name="check" size={22} color="#1E1341" />
+                  </View>
+                ) : null}
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <Text style={styles.promptTextSecondary}>Do you currently have accommodation?</Text>
+
+        <View style={styles.optionList}>
+          {ownAccommodationOptions.map((option) => {
+            const isSelected = ownAccommodationStatus === option.key;
+            return (
+              <Pressable
+                key={option.key}
+                style={[styles.statusOption, isSelected ? styles.statusOptionSelected : styles.statusOptionIdle]}
+                onPress={() => setOwnAccommodationStatus(option.key)}>
                 <View style={styles.statusTextWrap}>
                   <Text
                     style={[
@@ -152,6 +193,15 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 21,
     lineHeight: 29,
+    fontFamily: 'Prompt-SemiBold',
+    textAlign: 'center',
+    paddingHorizontal: 10,
+  },
+  promptTextSecondary: {
+    marginTop: 22,
+    color: '#FFFFFF',
+    fontSize: 18,
+    lineHeight: 24,
     fontFamily: 'Prompt-SemiBold',
     textAlign: 'center',
     paddingHorizontal: 10,

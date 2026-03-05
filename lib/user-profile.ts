@@ -13,6 +13,7 @@ import {
   type UserProfileInput,
   type BudgetRange,
   type AccommodationType,
+  type RoommateAccommodationPreference,
   type RoommateGenderPreference,
   type UserGender,
 } from '@/types/user-profile';
@@ -47,10 +48,14 @@ function toUserProfile(uid: string, data: DocumentData): UserProfile {
     accommodation: (data.accommodation as AccommodationType) ?? 'studio',
     preferredRoommateGender:
       (data.preferredRoommateGender as RoommateGenderPreference) ?? 'any',
+    roommateAccommodationPreference:
+      (data.roommateAccommodationPreference as RoommateAccommodationPreference) ?? 'any',
+    photoUrls: asStringArray(data.photoUrls),
     budgetRange: normalizeBudgetRange(data.budgetRange),
     hasAccommodation: Boolean(data.hasAccommodation),
     lifestyleInterests: asStringArray(data.lifestyleInterests),
     hobbyInterests: asStringArray(data.hobbyInterests),
+    onboardingCompleted: Boolean(data.onboardingCompleted),
     createdAt: String(data.createdAt ?? ''),
     updatedAt: String(data.updatedAt ?? ''),
   };
@@ -71,18 +76,68 @@ export async function upsertUserProfile(
   payload: UserProfileInput
 ): Promise<UserProfile> {
   const profileRef = doc(db, 'users', uid);
-  const existing = await getDoc(profileRef);
   const now = new Date().toISOString();
+  let createdAt = now;
+
+  try {
+    const existing = await getDoc(profileRef);
+    if (existing.exists()) {
+      createdAt = String(existing.data().createdAt ?? now);
+    }
+  } catch {
+    // Some Firestore rules allow writes but block reads.
+    // Continue with a write attempt so profile save is not blocked by a pre-read failure.
+  }
 
   const merged: UserProfile = {
     uid,
     ...payload,
-    createdAt: existing.exists() ? String(existing.data().createdAt ?? now) : now,
+    createdAt,
     updatedAt: now,
   };
 
   await setDoc(profileRef, merged, { merge: true });
   return merged;
+}
+
+export async function createInitialUserProfile(uid: string, email: string): Promise<UserProfile> {
+  return upsertUserProfile(uid, {
+    email: email.trim().toLowerCase(),
+    fullName: '',
+    age: 0,
+    dateOfBirth: '',
+    gender: 'female',
+    phoneNumber: '',
+    whatsAppNumber: '',
+    accommodation: 'studio',
+    preferredRoommateGender: 'any',
+    roommateAccommodationPreference: 'any',
+    photoUrls: [],
+    budgetRange: [5000, 8000],
+    hasAccommodation: false,
+    lifestyleInterests: [],
+    hobbyInterests: [],
+    onboardingCompleted: false,
+  });
+}
+
+export function isUserProfileComplete(profile: UserProfile | null): boolean {
+  if (!profile) return false;
+  if (profile.onboardingCompleted === true) return true;
+
+  // Backward compatibility for existing users created before onboardingCompleted existed.
+  return (
+    profile.fullName.trim().length >= 2 &&
+    profile.age > 0 &&
+    profile.dateOfBirth.trim().length > 0 &&
+    profile.phoneNumber.trim().length > 0 &&
+    profile.whatsAppNumber.trim().length > 0
+  );
+}
+
+export function hasMinimumProfilePhotos(profile: UserProfile | null, minPhotos = 2): boolean {
+  if (!profile) return false;
+  return profile.photoUrls.length >= minPhotos;
 }
 
 export async function updateUserProfile(

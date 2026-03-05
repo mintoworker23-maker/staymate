@@ -58,14 +58,16 @@ export default function StartScreen() {
           Connect with trusted students and match with the right roommate near campus.
         </Text>
 
-        <Pressable style={styles.confirmButton} onPress={() => router.push('/university-login')}>
-          <Text style={styles.confirmButtonText}>Confirm</Text>
+        <Pressable
+          style={styles.confirmButton}
+          onPress={() => router.push({ pathname: '/university-login', params: { mode: 'register' } })}>
+          <Text style={styles.confirmButtonText}>Register</Text>
         </Pressable>
 
         <Pressable
           style={styles.googleButton}
-          onPress={() => router.push({ pathname: '/university-code', params: { mode: 'login' } })}>
-          <MaterialCommunityIcons name="login-variant" size={20} color="#3A237F" />
+          onPress={() => router.push({ pathname: '/university-login', params: { mode: 'login' } })}>
+          <MaterialCommunityIcons name="login-variant" size={20} color="#A385E8" />
           <Text style={styles.googleButtonText}>Login</Text>
         </Pressable>
       </Animated.View>
@@ -140,16 +142,16 @@ const styles = StyleSheet.create({
     marginTop: 10,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1.4,
-    borderColor: '#E5DDFE',
+    backgroundColor: 'transparent',
+    borderWidth: 1.8,
+    borderColor: '#A385E8',
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 8,
   },
   googleButtonText: {
-    color: '#3A237F',
+    color: '#A385E8',
     fontFamily: 'Prompt-SemiBold',
     fontSize: 16,
   },

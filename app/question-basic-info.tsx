@@ -61,12 +61,7 @@ function sanitizePhoneInput(value: string) {
 }
 
 function isValidKenyaMobileNumber(value: string) {
-  return (
-    /^0(7\d{8}|1\d{8})$/.test(value) ||
-    /^(7\d{8}|1\d{8})$/.test(value) ||
-    /^254(7\d{8}|1\d{8})$/.test(value) ||
-    /^\+254(7\d{8}|1\d{8})$/.test(value)
-  );
+  return /^(?:\+254|254|0)?(?:7\d{8}|1\d{8})$/.test(value);
 }
 
 function getMonthLabel(month: string | null) {
@@ -211,12 +206,16 @@ export default function BasicInfoQuestionScreen() {
     }
 
     if (!isValidKenyaMobileNumber(normalizedPhone)) {
-      setErrorMessage('Use a valid Kenya mobile number (e.g. 0712345678 or +254712345678).');
+      setErrorMessage(
+        'Use a valid Kenya mobile number (e.g. 0712345678, 0112345678, +254712345678, +254112345678).'
+      );
       return;
     }
 
     if (!isValidKenyaMobileNumber(normalizedWhatsApp)) {
-      setErrorMessage('Use a valid Kenya WhatsApp number (e.g. 0712345678 or +254712345678).');
+      setErrorMessage(
+        'Use a valid Kenya WhatsApp number (e.g. 0712345678, 0112345678, +254712345678, +254112345678).'
+      );
       return;
     }
 

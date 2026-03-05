@@ -5,7 +5,11 @@ import { SvgXml } from 'react-native-svg';
 
 import { useAuthStore } from '@/context/auth-store';
 import { useOnboardingProfileStore } from '@/context/onboarding-profile-store';
-import { getUserProfile } from '@/lib/user-profile';
+import {
+  getUserProfile,
+  hasMinimumProfilePhotos,
+  isUserProfileComplete,
+} from '@/lib/user-profile';
 
 const LAUNCH_LOGO_XML = `
 <svg width="160" height="154" viewBox="0 0 160 154" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -42,9 +46,11 @@ export default function LaunchScreen() {
           const existingProfile = await getUserProfile(user.uid);
           if (isCancelled) return;
 
-          if (existingProfile) {
+          if (isUserProfileComplete(existingProfile)) {
             hasNavigatedRef.current = true;
-            router.replace('/home');
+            router.replace(
+              hasMinimumProfilePhotos(existingProfile) ? '/home' : '/question-photos'
+            );
             return;
           }
 

@@ -1,6 +1,5 @@
 import {
   createUserWithEmailAndPassword,
-  fetchSignInMethodsForEmail,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   type UserCredential,
@@ -8,16 +7,17 @@ import {
 
 import { auth } from '@/lib/firebase';
 
-export async function signInOrCreateWithPassword(
+export async function registerWithEmailAndPassword(
   email: string,
   password: string
 ): Promise<UserCredential> {
-  const methods = await fetchSignInMethodsForEmail(auth, email);
+  return createUserWithEmailAndPassword(auth, email, password);
+}
 
-  if (methods.length === 0) {
-    return createUserWithEmailAndPassword(auth, email, password);
-  }
-
+export async function loginWithEmailAndPassword(
+  email: string,
+  password: string
+): Promise<UserCredential> {
   return signInWithEmailAndPassword(auth, email, password);
 }
 
@@ -25,5 +25,6 @@ export async function sendPasswordReset(email: string): Promise<void> {
   await sendPasswordResetEmail(auth, email);
 }
 
-// Backward-compatible alias while route/file names are still based on "code".
-export const signInOrCreateWithCode = signInOrCreateWithPassword;
+// Backward-compatible alias while callers migrate.
+export const signInOrCreateWithPassword = loginWithEmailAndPassword;
+export const signInOrCreateWithCode = loginWithEmailAndPassword;

@@ -44,12 +44,7 @@ const CONTACT_ROW_LABELS: Record<ContactRowId, string> = {
 };
 
 function isValidKenyaMobileNumber(value: string) {
-  return (
-    /^0(7\d{8}|1\d{8})$/.test(value) ||
-    /^(7\d{8}|1\d{8})$/.test(value) ||
-    /^254(7\d{8}|1\d{8})$/.test(value) ||
-    /^\+254(7\d{8}|1\d{8})$/.test(value)
-  );
+  return /^(?:\+254|254|0)?(?:7\d{8}|1\d{8})$/.test(value);
 }
 
 function sanitizePhoneInput(value: string) {
@@ -120,13 +115,19 @@ function toProfileUpdate(
     }
     case 'phone': {
       if (!isValidKenyaMobileNumber(rawValue)) {
-        return { error: 'Use a valid Kenya mobile number.' };
+        return {
+          error:
+            'Use a valid Kenya mobile number (e.g. 0712345678, 0112345678, +254712345678, +254112345678).',
+        };
       }
       return { updates: { phoneNumber: rawValue } };
     }
     case 'whatsapp': {
       if (!isValidKenyaMobileNumber(rawValue)) {
-        return { error: 'Use a valid Kenya WhatsApp number.' };
+        return {
+          error:
+            'Use a valid Kenya WhatsApp number (e.g. 0712345678, 0112345678, +254712345678, +254112345678).',
+        };
       }
       return { updates: { whatsAppNumber: rawValue } };
     }
