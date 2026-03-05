@@ -51,4 +51,3 @@ lib/firebase.ts
 firebase.json
 firestore.rules
 firestore.indexes.json
-google-services.json
