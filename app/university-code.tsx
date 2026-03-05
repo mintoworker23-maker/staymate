@@ -6,6 +6,7 @@ import {
   Platform,
   Pressable,
   ActivityIndicator,
+  Modal,
   StyleSheet,
   Text,
   TextInput,
@@ -32,6 +33,24 @@ import type { UserProfile } from '@/types/user-profile';
 const QUESTION_STEPS = 7;
 const MIN_PASSWORD_LENGTH = 6;
 const PROFILE_LOOKUP_MAX_WAIT_MS = 450;
+const personalDomains = new Set([
+  'gmail.com',
+  'yahoo.com',
+  'outlook.com',
+  'hotmail.com',
+  'icloud.com',
+]);
+const STUDENT_EMAIL_PATTERN = /\.(edu|ac\.[a-z]{2,})$/i;
+
+function isUniversityEmail(email: string) {
+  const normalized = email.trim().toLowerCase();
+  if (!normalized || normalized.includes(' ') || !normalized.includes('@')) return false;
+
+  const domain = normalized.split('@')[1] ?? '';
+  if (!domain || personalDomains.has(domain)) return false;
+
+  return STUDENT_EMAIL_PATTERN.test(domain);
+}
 
 function maskEmail(email: string) {
   const normalized = email.trim().toLowerCase();
@@ -88,6 +107,9 @@ export default function UniversityCodeScreen() {
   const [isSendingReset, setIsSendingReset] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
   const [infoMessage, setInfoMessage] = React.useState<string | null>(null);
+  const [resetModalVisible, setResetModalVisible] = React.useState(false);
+  const [resetEmail, setResetEmail] = React.useState('');
+  const [resetEmailError, setResetEmailError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -130,6 +152,13 @@ export default function UniversityCodeScreen() {
       cancelled = true;
     };
   }, [paramEmail]);
+
+  React.useEffect(() => {
+    if (!resetModalVisible) {
+      setResetEmail(resolvedEmail);
+      setResetEmailError(null);
+    }
+  }, [resolvedEmail, resetModalVisible]);
 
   const handleConfirm = React.useCallback(() => {
     if (isSubmitting) return;
@@ -257,33 +286,52 @@ export default function UniversityCodeScreen() {
 
   const handleSendReset = React.useCallback(() => {
     if (isSendingReset) return;
-    if (!resolvedEmail) {
-      setErrorMessage('Missing email. Go back and enter your university email.');
+    setResetEmail(resolvedEmail);
+    setResetEmailError(null);
+    setResetModalVisible(true);
+  }, [isSendingReset, resolvedEmail]);
+
+  const handleConfirmSendReset = React.useCallback(() => {
+    if (isSendingReset) return;
+
+    const normalizedResetEmail = resetEmail.trim().toLowerCase();
+    if (!normalizedResetEmail) {
+      setResetEmailError('Enter your university email.');
+      return;
+    }
+
+    if (!isUniversityEmail(normalizedResetEmail)) {
+      setResetEmailError('Enter a valid university email.');
       return;
     }
 
     setIsSendingReset(true);
+    setResetEmailError(null);
     setErrorMessage(null);
     setInfoMessage(null);
 
     void (async () => {
       try {
-        await sendPasswordReset(resolvedEmail);
-        setInfoMessage(`Password reset email sent to ${maskEmail(resolvedEmail)}.`);
+        await sendPasswordReset(normalizedResetEmail);
+        void saveLastLoginEmail(normalizedResetEmail);
+        setInfoMessage(`Password reset email sent to ${maskEmail(normalizedResetEmail)}.`);
+        setResetModalVisible(false);
       } catch (error) {
         const code = getFirebaseErrorCode(error);
-        if (code === 'auth/user-not-found') {
-          setErrorMessage('No account found for this email yet. Create one by setting a password.');
+        if (code === 'auth/invalid-email') {
+          setResetEmailError('That email format is invalid.');
+        } else if (code === 'auth/user-not-found') {
+          setResetEmailError('No account found for this email.');
         } else if (code === 'auth/too-many-requests') {
-          setErrorMessage('Too many requests. Please wait before trying again.');
+          setResetEmailError('Too many requests. Please wait before trying again.');
         } else {
-          setErrorMessage('Unable to send reset email right now. Please try again.');
+          setResetEmailError('Unable to send reset email right now. Please try again.');
         }
       } finally {
         setIsSendingReset(false);
       }
     })();
-  }, [isSendingReset, resolvedEmail]);
+  }, [isSendingReset, resetEmail]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -349,9 +397,6 @@ export default function UniversityCodeScreen() {
 
         {isLoginMode ? (
           <Pressable style={styles.resendRow} onPress={handleSendReset} disabled={isSendingReset}>
-            {isSendingReset ? (
-              <ActivityIndicator size="small" color="#D5FF78" style={styles.resetSpinner} />
-            ) : null}
             <Text style={styles.resendText}>Forgot password? </Text>
             <Text style={styles.resendAccent}>Send reset email</Text>
           </Pressable>
@@ -385,6 +430,65 @@ export default function UniversityCodeScreen() {
           </Text>
         </Pressable>
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={resetModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setResetModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setResetModalVisible(false)} />
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Reset password</Text>
+            <Text style={styles.modalDescription}>
+              Enter the university email for the account you want to recover.
+            </Text>
+
+            <View
+              style={[
+                styles.modalInputWrap,
+                resetEmailError ? styles.modalInputWrapError : null,
+              ]}>
+              <TextInput
+                value={resetEmail}
+                onChangeText={(value) => {
+                  setResetEmail(value);
+                  if (resetEmailError) setResetEmailError(null);
+                }}
+                placeholder="your.name@school.ac.ke"
+                placeholderTextColor="#A69BC9"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={styles.modalInput}
+                editable={!isSendingReset}
+              />
+            </View>
+
+            {resetEmailError ? <Text style={styles.modalErrorText}>{resetEmailError}</Text> : null}
+
+            <View style={styles.modalButtonRow}>
+              <Pressable
+                style={[styles.modalButton, styles.modalButtonSecondary]}
+                onPress={() => setResetModalVisible(false)}
+                disabled={isSendingReset}>
+                <Text style={styles.modalButtonSecondaryText}>Cancel</Text>
+              </Pressable>
+
+              <Pressable
+                style={[styles.modalButton, styles.modalButtonPrimary, isSendingReset ? styles.modalButtonDisabled : null]}
+                onPress={handleConfirmSendReset}
+                disabled={isSendingReset}>
+                {isSendingReset ? (
+                  <ActivityIndicator size="small" color="#1A123A" />
+                ) : (
+                  <Text style={styles.modalButtonPrimaryText}>Send link</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -546,5 +650,89 @@ const styles = StyleSheet.create({
     color: '#1A123A',
     fontSize: 18,
     fontFamily: 'Prompt-SemiBold',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 9, 35, 0.64)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+  },
+  modalCard: {
+    width: '100%',
+    borderRadius: 24,
+    backgroundColor: '#5630A6',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  modalTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontFamily: 'Prompt-SemiBold',
+  },
+  modalDescription: {
+    marginTop: 6,
+    color: '#D8CCFF',
+    fontSize: 12,
+    lineHeight: 17,
+    fontFamily: 'Prompt',
+  },
+  modalInputWrap: {
+    marginTop: 12,
+    minHeight: 56,
+    borderRadius: 16,
+    backgroundColor: '#4B2A97',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  modalInputWrapError: {
+    borderWidth: 1.5,
+    borderColor: '#FF9FB8',
+  },
+  modalInput: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    lineHeight: 18,
+    fontFamily: 'Prompt-SemiBold',
+  },
+  modalErrorText: {
+    marginTop: 8,
+    color: '#FFB8C8',
+    fontSize: 11,
+    lineHeight: 16,
+    fontFamily: 'Prompt-SemiBold',
+  },
+  modalButtonRow: {
+    marginTop: 14,
+    flexDirection: 'row',
+    gap: 10,
+  },
+  modalButton: {
+    flex: 1,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalButtonPrimary: {
+    backgroundColor: '#D5FF78',
+  },
+  modalButtonSecondary: {
+    borderWidth: 1.2,
+    borderColor: '#A89CD1',
+    backgroundColor: 'transparent',
+  },
+  modalButtonPrimaryText: {
+    color: '#1A123A',
+    fontSize: 14,
+    fontFamily: 'Prompt-Bold',
+  },
+  modalButtonSecondaryText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontFamily: 'Prompt-SemiBold',
+  },
+  modalButtonDisabled: {
+    opacity: 0.75,
   },
 });
