@@ -13,6 +13,7 @@ import { AuthStoreProvider } from '@/context/auth-store';
 import { ChatStoreProvider } from '@/context/chat-store';
 import { MatchFeedStoreProvider } from '@/context/match-feed-store';
 import { MatchRequestStoreProvider } from '@/context/match-request-store';
+import { NotificationStoreProvider } from '@/context/notification-store';
 import { OnboardingProfileStoreProvider } from '@/context/onboarding-profile-store';
 
 export const unstable_settings = {
@@ -52,30 +53,33 @@ export default function RootLayout() {
               <MatchFeedStoreProvider>
                 <MatchRequestStoreProvider>
                   <ChatStoreProvider>
-                    <Stack
-                      screenOptions={{
-                        contentStyle: { backgroundColor: '#371F7E' },
-                        animation: 'slide_from_right',
-                        animationTypeForReplace: 'push',
-                        fullScreenGestureEnabled: true,
-                      }}>
-                      <Stack.Screen name="index" options={{ headerShown: false }} />
-                      <Stack.Screen name="start" options={{ headerShown: false }} />
-                      <Stack.Screen name="university-login" options={{ headerShown: false }} />
-                      <Stack.Screen name="university-code" options={{ headerShown: false }} />
-                      <Stack.Screen name="question-basic-info" options={{ headerShown: false }} />
-                      <Stack.Screen name="question-preferences" options={{ headerShown: false }} />
-                      <Stack.Screen name="question-personality" options={{ headerShown: false }} />
-                      <Stack.Screen name="question-interests" options={{ headerShown: false }} />
-                      <Stack.Screen name="question-ready" options={{ headerShown: false }} />
-                      <Stack.Screen name="question-photos" options={{ headerShown: false }} />
-                      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                      <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-                      <Stack.Screen name="profile" options={{ headerShown: false }} />
-                      <Stack.Screen name="person/[id]" options={{ headerShown: false }} />
-                      <Stack.Screen name="person/match/[id]" options={{ headerShown: false }} />
-                      <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
-                    </Stack>
+                    <NotificationStoreProvider>
+                      <Stack
+                        screenOptions={{
+                          contentStyle: { backgroundColor: '#371F7E' },
+                          animation: 'slide_from_right',
+                          animationTypeForReplace: 'push',
+                          fullScreenGestureEnabled: true,
+                        }}>
+                        <Stack.Screen name="index" options={{ headerShown: false }} />
+                        <Stack.Screen name="start" options={{ headerShown: false }} />
+                        <Stack.Screen name="university-login" options={{ headerShown: false }} />
+                        <Stack.Screen name="university-code" options={{ headerShown: false }} />
+                        <Stack.Screen name="question-basic-info" options={{ headerShown: false }} />
+                        <Stack.Screen name="question-preferences" options={{ headerShown: false }} />
+                        <Stack.Screen name="question-personality" options={{ headerShown: false }} />
+                        <Stack.Screen name="question-interests" options={{ headerShown: false }} />
+                        <Stack.Screen name="question-ready" options={{ headerShown: false }} />
+                        <Stack.Screen name="question-photos" options={{ headerShown: false }} />
+                        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                        <Stack.Screen name="notifications" options={{ headerShown: false }} />
+                        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+                        <Stack.Screen name="profile" options={{ headerShown: false }} />
+                        <Stack.Screen name="person/[id]" options={{ headerShown: false }} />
+                        <Stack.Screen name="person/match/[id]" options={{ headerShown: false }} />
+                        <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
+                      </Stack>
+                    </NotificationStoreProvider>
                   </ChatStoreProvider>
                 </MatchRequestStoreProvider>
               </MatchFeedStoreProvider>

@@ -25,6 +25,7 @@ import { useAuthStore } from '@/context/auth-store';
 import { useChatStore } from '@/context/chat-store';
 import { useMatchFeedStore } from '@/context/match-feed-store';
 import { useMatchRequestStore } from '@/context/match-request-store';
+import { useNotificationStore } from '@/context/notification-store';
 import { type MatchPerson } from '@/data/people';
 import {
   isDiscoverableProfile,
@@ -152,6 +153,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { user, loading } = useAuthStore();
   const { upsertConversationFromMatch, totalUnreadCount } = useChatStore();
+  const { unreadCount: notificationUnreadCount } = useNotificationStore();
   const { rejectedPersonIds, matchedPersonIds, rejectPerson, markMatched, resetFeedDecisions } =
     useMatchFeedStore();
   const {
@@ -477,6 +479,16 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.headerActions}>
+          <Pressable style={styles.notificationButton} onPress={() => router.push('/notifications')}>
+            <MaterialCommunityIcons name="bell-outline" size={22} color="#FFFFFF" />
+            {notificationUnreadCount > 0 ? (
+              <View style={styles.notificationBadge}>
+                <Text style={styles.notificationBadgeText}>
+                  {notificationUnreadCount > 99 ? '99+' : notificationUnreadCount}
+                </Text>
+              </View>
+            ) : null}
+          </Pressable>
           <Pressable style={styles.settingsButton} onPress={() => setFiltersVisible(true)}>
             <MaterialCommunityIcons name="tune-variant" size={22} color="#FFFFFF" />
           </Pressable>
@@ -630,6 +642,34 @@ const styles = StyleSheet.create({
     backgroundColor: '#3A2286',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  notificationButton: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: '#3A2286',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    backgroundColor: '#DF3E57',
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notificationBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    lineHeight: 10,
+    fontFamily: 'Prompt-Bold',
   },
   profileAvatar: {
     width: 54,
