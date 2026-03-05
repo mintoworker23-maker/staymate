@@ -107,6 +107,7 @@ export default function UniversityCodeScreen() {
   const [isSendingReset, setIsSendingReset] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
   const [infoMessage, setInfoMessage] = React.useState<string | null>(null);
+  const [showResetInboxHint, setShowResetInboxHint] = React.useState(false);
   const [resetModalVisible, setResetModalVisible] = React.useState(false);
   const [resetEmail, setResetEmail] = React.useState('');
   const [resetEmailError, setResetEmailError] = React.useState<string | null>(null);
@@ -177,6 +178,7 @@ export default function UniversityCodeScreen() {
     setIsSubmitting(true);
     setErrorMessage(null);
     setInfoMessage(null);
+    setShowResetInboxHint(false);
 
     void (async () => {
       const authenticate =
@@ -309,12 +311,14 @@ export default function UniversityCodeScreen() {
     setResetEmailError(null);
     setErrorMessage(null);
     setInfoMessage(null);
+    setShowResetInboxHint(false);
 
     void (async () => {
       try {
         await sendPasswordReset(normalizedResetEmail);
         void saveLastLoginEmail(normalizedResetEmail);
         setInfoMessage(`Password reset email sent to ${maskEmail(normalizedResetEmail)}.`);
+        setShowResetInboxHint(true);
         setResetModalVisible(false);
       } catch (error) {
         const code = getFirebaseErrorCode(error);
@@ -410,6 +414,9 @@ export default function UniversityCodeScreen() {
         )}
 
         {infoMessage ? <Text style={styles.infoStatusText}>{infoMessage}</Text> : null}
+        {showResetInboxHint ? (
+          <Text style={styles.resetInboxHintText}>Check Spam/Promotions if not in inbox.</Text>
+        ) : null}
         {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
         {isLoginMode ? (
           <Pressable
@@ -610,6 +617,15 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 16,
     fontFamily: 'Prompt-SemiBold',
+    textAlign: 'center',
+    paddingHorizontal: 12,
+  },
+  resetInboxHintText: {
+    marginTop: 6,
+    color: '#D8CCFF',
+    fontSize: 11,
+    lineHeight: 16,
+    fontFamily: 'Prompt',
     textAlign: 'center',
     paddingHorizontal: 12,
   },
