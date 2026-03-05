@@ -195,12 +195,14 @@ export default function HomeScreen() {
   const handleDiscoverError = React.useCallback((error: FirestoreError) => {
     if (error.code === 'permission-denied') {
       setDiscoverErrorMessage(
-        'Unable to load roommate feed. Firestore read permission is missing for users.'
+        'We could not load roommate suggestions right now. Please try again shortly.'
       );
       return;
     }
 
-    setDiscoverErrorMessage('Unable to load roommate feed right now. Please try again.');
+    setDiscoverErrorMessage(
+      'We could not load roommate suggestions. Check your internet and try again.'
+    );
   }, []);
 
   React.useEffect(() => {
@@ -234,12 +236,12 @@ export default function HomeScreen() {
         setHasLoadedCurrentProfile(true);
         if (error.code === 'permission-denied') {
           setDiscoverErrorMessage(
-            'Unable to load your profile. Firestore read permission is missing for users.'
+            'We could not load your profile details right now. Please reopen the app and try again.'
           );
           return;
         }
 
-        setDiscoverErrorMessage('Unable to load your profile right now. Please try again.');
+        setDiscoverErrorMessage('We could not load your profile. Check your internet and try again.');
       }
     );
 

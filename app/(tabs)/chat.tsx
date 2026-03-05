@@ -111,12 +111,12 @@ export default function ChatScreen() {
   const handleProfileSyncError = React.useCallback((error: FirestoreError) => {
     if (error.code === 'permission-denied') {
       setSyncErrorMessage(
-        'Unable to sync chats with latest users. Firestore read permission is missing.'
+        'We could not refresh chat details right now. Please try again shortly.'
       );
       return;
     }
 
-    setSyncErrorMessage('Unable to sync chats right now. Please try again.');
+    setSyncErrorMessage('We could not refresh chats. Check your internet and try again.');
   }, []);
 
   React.useEffect(() => {

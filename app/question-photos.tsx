@@ -81,24 +81,30 @@ export default function PhotoSetupQuestionScreen() {
   );
 
   const pickImageAt = React.useCallback(async (slotIndex: number) => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Permission needed', 'Allow media access to add your profile photos.');
-      return;
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 0.9,
+      });
+
+      if (result.canceled || !result.assets?.length) return;
+
+      const selected = result.assets[0];
+      setReviewingSlotIndex(slotIndex);
+      setReviewingImageUri(selected.uri);
+      if (errorMessage) setErrorMessage(null);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message.toLowerCase() : '';
+      if (detail.includes('permission') || detail.includes('denied')) {
+        Alert.alert(
+          'Permission needed',
+          'Allow photo access in phone settings, then try selecting an image again.'
+        );
+        return;
+      }
+      Alert.alert('Gallery unavailable', 'Unable to open your gallery right now. Please try again.');
     }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: false,
-      quality: 0.9,
-    });
-
-    if (result.canceled || !result.assets?.length) return;
-
-    const selected = result.assets[0];
-    setReviewingSlotIndex(slotIndex);
-    setReviewingImageUri(selected.uri);
-    if (errorMessage) setErrorMessage(null);
   }, [errorMessage]);
 
   const removeImageAt = React.useCallback((slotIndex: number) => {

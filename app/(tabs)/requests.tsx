@@ -58,12 +58,12 @@ export default function RequestsScreen() {
   const handleDiscoverError = React.useCallback((error: FirestoreError) => {
     if (error.code === 'permission-denied') {
       setDiscoverErrorMessage(
-        'Unable to load requests. Firestore read permission is missing for users.'
+        'We could not load match requests right now. Please try again shortly.'
       );
       return;
     }
 
-    setDiscoverErrorMessage('Unable to load requests right now. Please try again.');
+    setDiscoverErrorMessage('We could not load match requests. Check your internet and try again.');
   }, []);
 
   React.useEffect(() => {

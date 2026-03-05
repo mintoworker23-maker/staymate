@@ -20,6 +20,7 @@ import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BrandedPromptModal } from '@/components/branded-prompt-modal';
+import { MediaReviewModal } from '@/components/media-review-modal';
 import { type ChatMessage } from '@/data/chats';
 import { useChatStore } from '@/context/chat-store';
 import { goBackOrReplace } from '@/lib/navigation';
@@ -54,6 +55,7 @@ export default function ChatDetailScreen() {
   const [draft, setDraft] = React.useState('');
   const [selectedAttachmentUri, setSelectedAttachmentUri] = React.useState<string | null>(null);
   const [selectedAttachmentCaption, setSelectedAttachmentCaption] = React.useState('');
+  const [reviewingAttachmentUri, setReviewingAttachmentUri] = React.useState<string | null>(null);
   const [selectedMessageIds, setSelectedMessageIds] = React.useState<string[]>([]);
   const [pendingDeleteMessageIds, setPendingDeleteMessageIds] = React.useState<string[] | null>(null);
   const messageListRef = React.useRef<FlatList<ChatMessage>>(null);
@@ -62,6 +64,7 @@ export default function ChatDetailScreen() {
     setDraft('');
     setSelectedAttachmentUri(null);
     setSelectedAttachmentCaption('');
+    setReviewingAttachmentUri(null);
     setSelectedMessageIds([]);
     setPendingDeleteMessageIds(null);
   }, [chatId]);
@@ -99,23 +102,28 @@ export default function ChatDetailScreen() {
   }, [appendMessage, conversation, draft]);
 
   const pickImageAttachment = React.useCallback(async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Permission needed', 'Allow media access to attach images.');
-      return;
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 0.85,
+      });
+
+      if (result.canceled || !result.assets?.length) return;
+
+      const selected = result.assets[0];
+      setReviewingAttachmentUri(selected.uri);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message.toLowerCase() : '';
+      if (detail.includes('permission') || detail.includes('denied')) {
+        Alert.alert(
+          'Permission needed',
+          'Allow photo access in phone settings, then try attaching an image again.'
+        );
+        return;
+      }
+      Alert.alert('Gallery unavailable', 'Unable to open your gallery right now. Please try again.');
     }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      quality: 0.85,
-    });
-
-    if (result.canceled || !result.assets?.length) return;
-
-    const selected = result.assets[0];
-    setSelectedAttachmentUri(selected.uri);
-    setSelectedAttachmentCaption('');
   }, []);
 
   const confirmImageAttachment = React.useCallback(() => {
@@ -580,6 +588,21 @@ export default function ChatDetailScreen() {
           </View>
         </View>
       </Modal>
+
+      <MediaReviewModal
+        visible={Boolean(reviewingAttachmentUri)}
+        uri={reviewingAttachmentUri}
+        title="Review your attachment"
+        confirmLabel="Use photo"
+        onClose={() => {
+          setReviewingAttachmentUri(null);
+        }}
+        onConfirm={(uri) => {
+          setReviewingAttachmentUri(null);
+          setSelectedAttachmentUri(uri);
+          setSelectedAttachmentCaption('');
+        }}
+      />
 
       <BrandedPromptModal
         visible={Boolean(pendingDeleteMessageIds?.length)}

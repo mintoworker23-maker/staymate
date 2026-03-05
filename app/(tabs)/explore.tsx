@@ -96,12 +96,12 @@ export default function MatchExploreScreen() {
   const handleDiscoverError = React.useCallback((error: FirestoreError) => {
     if (error.code === 'permission-denied') {
       setDiscoverErrorMessage(
-        'Unable to load roommates. Firestore read permission is missing for users.'
+        'We could not load roommates right now. Please try again shortly.'
       );
       return;
     }
 
-    setDiscoverErrorMessage('Unable to load roommates right now. Please try again.');
+    setDiscoverErrorMessage('We could not load roommates. Check your internet and try again.');
   }, []);
 
   React.useEffect(() => {

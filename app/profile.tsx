@@ -20,6 +20,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BrandedPromptModal } from '@/components/branded-prompt-modal';
+import { MediaReviewModal } from '@/components/media-review-modal';
 import { useAuthStore } from '@/context/auth-store';
 import { useOnboardingProfileStore } from '@/context/onboarding-profile-store';
 import { normalizeLookupKey, normalizeRadiusKm } from '@/lib/location';
@@ -367,6 +368,8 @@ export default function ProfileScreen() {
   const [isSubmittingVerification, setIsSubmittingVerification] = React.useState(false);
   const [hasSentVerificationEmail, setHasSentVerificationEmail] = React.useState(false);
   const [profileSnapshot, setProfileSnapshot] = React.useState<UserProfile | null>(null);
+  const [reviewingSlotIndex, setReviewingSlotIndex] = React.useState<number | null>(null);
+  const [reviewingImageUri, setReviewingImageUri] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!loading && !user) {
@@ -441,29 +444,45 @@ export default function ProfileScreen() {
     }
     if (photoSaving) return;
 
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Permission needed', 'Allow media access to add profile photos.');
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 0.9,
+      });
+
+      if (result.canceled || !result.assets?.length) return;
+
+      const selected = result.assets[0];
+      setReviewingSlotIndex(slotIndex);
+      setReviewingImageUri(selected.uri);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message.toLowerCase() : '';
+      if (detail.includes('permission') || detail.includes('denied')) {
+        Alert.alert(
+          'Permission needed',
+          'Allow photo access in phone settings, then try selecting an image again.'
+        );
+        return;
+      }
+      Alert.alert('Gallery unavailable', 'Unable to open your gallery right now. Please try again.');
+    }
+  }, [photoSaving, user]);
+
+  const uploadReviewedImageAt = React.useCallback(async (slotIndex: number, localUri: string) => {
+    if (!user) {
+      Alert.alert('Session expired', 'Please sign in again before uploading photos.');
       return;
     }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      quality: 0.9,
-    });
-
-    if (result.canceled || !result.assets?.length) return;
-
     const previousSlots = [...photoSlots];
-    const selected = result.assets[0];
     setPhotoSaving(true);
 
     try {
-      const uploadedUrls = await uploadProfileImages(user.uid, [selected.uri]);
+      const uploadedUrls = await uploadProfileImages(user.uid, [localUri]);
       const uploadedUrl = uploadedUrls[0];
       if (!uploadedUrl) {
-        throw new Error('No uploaded URL was returned.');
+        throw new Error('Image upload did not finish.');
       }
 
       const nextSlots = [...photoSlots];
@@ -474,15 +493,15 @@ export default function ProfileScreen() {
       });
     } catch (error) {
       setPhotoSlots(previousSlots);
-      const detail = error instanceof Error ? error.message : null;
-      Alert.alert(
-        'Upload failed',
-        detail ?? 'Unable to upload and save this photo right now. Please try again.'
-      );
+      const detail = error instanceof Error ? error.message.toLowerCase() : '';
+      const message = detail.includes('network')
+        ? 'You appear to be offline. Check your internet and try again.'
+        : 'We could not upload this photo right now. Please try again.';
+      Alert.alert('Upload failed', message);
     } finally {
       setPhotoSaving(false);
     }
-  }, [photoSaving, photoSlots, user]);
+  }, [photoSlots, user]);
 
   const removeImageAt = React.useCallback((slotIndex: number) => {
     if (!user || photoSaving) return;
@@ -956,6 +975,24 @@ export default function ProfileScreen() {
           </KeyboardAvoidingView>
         </View>
       </Modal>
+
+      <MediaReviewModal
+        visible={Boolean(reviewingImageUri)}
+        uri={reviewingImageUri}
+        title="Review your profile photo"
+        confirmLabel="Upload"
+        onClose={() => {
+          setReviewingImageUri(null);
+          setReviewingSlotIndex(null);
+        }}
+        onConfirm={(uri) => {
+          if (reviewingSlotIndex === null) return;
+          setReviewingImageUri(null);
+          void uploadReviewedImageAt(reviewingSlotIndex, uri).finally(() => {
+            setReviewingSlotIndex(null);
+          });
+        }}
+      />
     </SafeAreaView>
   );
 }
