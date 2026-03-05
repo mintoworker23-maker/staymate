@@ -44,3 +44,11 @@ app-example
 .env.example
 lib/firebase.ts
 .env
+
+#firebase contents
+/firebaseConfig.ts
+/firebaseConfig.js
+firebase.json
+firestore.rules
+firestore.indexes.json
+google-services.json
