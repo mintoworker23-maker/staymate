@@ -18,6 +18,7 @@ import {
   type ChatMessage,
 } from '@/data/chats';
 import { db } from '@/lib/firebase';
+import { sendPushToUser } from '@/lib/push-notifications';
 
 type MatchConversationTarget = {
   matchPersonId: string;
@@ -688,6 +689,18 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
       )
       .then(() => {
         markLocalMessageStatus('sent');
+        if (otherUserId) {
+          void sendPushToUser({
+            targetUid: otherUserId,
+            title: currentUserDisplayName,
+            body: previewText,
+            route: `/chat/${conversationId}`,
+            data: {
+              type: 'chat',
+              conversationId,
+            },
+          }).catch(() => {});
+        }
       })
       .catch((error) => {
         console.error('[chat] Failed to send message', error);

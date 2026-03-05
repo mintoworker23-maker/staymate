@@ -9,6 +9,7 @@ import {
   subscribeToOutgoingMatchRequests,
   updateMatchRequestStatus,
 } from '@/lib/match-requests';
+import { sendPushToUser } from '@/lib/push-notifications';
 
 type MatchRequestStoreValue = {
   incomingRequests: MatchRequest[];
@@ -120,8 +121,20 @@ export function MatchRequestStoreProvider({ children }: { children: React.ReactN
       if (!currentUid || !cleanedTargetUid || currentUid === cleanedTargetUid) return;
 
       await sendMatchRequest(currentUid, cleanedTargetUid);
+      const senderName =
+        user?.displayName?.trim() || user?.email?.split('@')[0]?.trim() || 'A StayMate user';
+      void sendPushToUser({
+        targetUid: cleanedTargetUid,
+        title: 'New match request',
+        body: `${senderName} sent you a roommate request.`,
+        route: '/requests',
+        data: {
+          type: 'match-request',
+          fromUid: currentUid,
+        },
+      }).catch(() => {});
     },
-    [user?.uid]
+    [user?.displayName, user?.email, user?.uid]
   );
 
   const respondToIncomingRequest = React.useCallback(
@@ -135,8 +148,24 @@ export function MatchRequestStoreProvider({ children }: { children: React.ReactN
         toUid: currentUid,
         status: decision,
       });
+
+      if (decision === 'accepted') {
+        const accepterName =
+          user?.displayName?.trim() || user?.email?.split('@')[0]?.trim() || 'A StayMate user';
+        const conversationId = [cleanedFromUid, currentUid].sort().join('_');
+        void sendPushToUser({
+          targetUid: cleanedFromUid,
+          title: 'Your match request was accepted',
+          body: `${accepterName} accepted your request. Start chatting now.`,
+          route: `/chat/${conversationId}`,
+          data: {
+            type: 'match-accepted',
+            conversationId,
+          },
+        }).catch(() => {});
+      }
     },
-    [user?.uid]
+    [user?.displayName, user?.email, user?.uid]
   );
 
   const cancelOutgoingRequest = React.useCallback(
