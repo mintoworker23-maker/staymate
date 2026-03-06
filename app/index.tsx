@@ -48,10 +48,12 @@ export default function LaunchScreen() {
         }
         hasNavigatedRef.current = true;
         router.replace('/question-basic-info');
-      } catch {
+      } catch (error) {
         if (!isCancelled) {
           hasNavigatedRef.current = true;
-          router.replace('/start');
+          // If we have an authenticated user but fetch failed (likely network/offline),
+          // don't boot to /start. Try to go to /home and let components handle missing data.
+          router.replace(user ? '/home' : '/start');
         }
       }
     })();

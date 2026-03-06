@@ -30,9 +30,11 @@ export default function TabLayout() {
           return;
         }
         setIsCheckingOnboarding(false);
-      } catch {
+      } catch (error) {
         if (!isCancelled) {
-          router.replace('/start');
+          // If fetch fails (maybe offline), but user is still logged in,
+          // allow them to proceed to the tabs rather than booting them out.
+          setIsCheckingOnboarding(false);
         }
       }
     })();

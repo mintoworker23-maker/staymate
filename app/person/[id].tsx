@@ -110,9 +110,16 @@ export default function PersonDetailScreen() {
   const personRole = profileFromSetup
     ? formatAccommodationLabel(profileFromSetup.accommodation)
     : fallbackPerson?.role ?? 'Roommate';
-  const personImageSource: ImageSourcePropType = profileFromSetup?.photoUrls[0]
-    ? { uri: profileFromSetup.photoUrls[0] }
-    : fallbackPerson?.image ?? DEFAULT_PERSON_AVATAR;
+
+  const photoSources = React.useMemo<ImageSourcePropType[]>(() => {
+    if (profileFromSetup?.photoUrls && profileFromSetup.photoUrls.length > 0) {
+      return profileFromSetup.photoUrls.map((url) => ({ uri: url }));
+    }
+    return fallbackPerson?.image ? [fallbackPerson.image] : [DEFAULT_PERSON_AVATAR];
+  }, [profileFromSetup, fallbackPerson]);
+
+  const mainPhotoSource = photoSources[0];
+
   const personPreferences = buildProfileTags(profileFromSetup, fallbackPerson?.preferences ?? []);
   const personBio = profileFromSetup
     ? profileFromSetup.bio.trim() || 'No bio yet'
@@ -222,7 +229,7 @@ export default function PersonDetailScreen() {
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.contentContainer}>
         <View style={styles.imageWrap}>
-          <Image source={personImageSource} style={styles.image} />
+          <Image source={mainPhotoSource} style={styles.image} />
 
           <View style={styles.scoreBadge}>
             <MaterialCommunityIcons name="handshake-outline" size={24} color="#1B1533" />
@@ -253,6 +260,14 @@ export default function PersonDetailScreen() {
 
         <Text style={styles.bioText}>{personBio}</Text>
 
+        <View style={styles.photoGallery}>
+          {photoSources.slice(1).map((source, index) => (
+            <View key={`photo-${index}`} style={styles.secondaryImageWrap}>
+              <Image source={source} style={styles.image} />
+            </View>
+          ))}
+        </View>
+
         <View style={styles.actionsRow}>
           <Pressable style={[styles.actionButton, styles.rejectButton]} onPress={handleRejectPress}>
             <MaterialCommunityIcons name="close" size={32} color="#FFFFFF" />
@@ -268,7 +283,7 @@ export default function PersonDetailScreen() {
               matchPersonId: effectivePersonId || 'unknown-person',
               name: personName,
               age: personAge,
-              avatar: personImageSource,
+              avatar: mainPhotoSource,
               isVerified: personIsVerified,
               whatsappNumber: personWhatsappNumber,
             }}
@@ -307,6 +322,13 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
     height: 500,
+  },
+  secondaryImageWrap: {
+    borderRadius: 32,
+    overflow: 'hidden',
+    position: 'relative',
+    height: 500,
+    marginTop: 16,
   },
   image: {
     width: '100%',
@@ -396,6 +418,9 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     fontFamily: 'Prompt-SemiBold',
     opacity: 0.95,
+  },
+  photoGallery: {
+    marginTop: 10,
   },
   actionsRow: {
     marginTop: 22,

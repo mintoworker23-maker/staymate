@@ -5,7 +5,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Animated,
   Easing,
-  GestureResponderEvent,
   ImageBackground,
   ImageSourcePropType,
   PanResponder,
@@ -45,14 +44,9 @@ type ProfileHeroCardProps = {
   onDecision?: (profile: SwipeProfile, decision: ProfileDecision) => void;
 };
 
-const PHOTO_DURATION_MS = 2800;
-const PROGRESS_TICK_MS = 50;
 const SWIPE_TRIGGER_PX = 28;
 const SWIPE_VELOCITY_TRIGGER = 0.22;
 const SWIPE_START_PX = 8;
-const RING_SEGMENTS = 120;
-const RING_SIZE = 94;
-const PAUSE_SIZE = 75;
 
 function sourceLabelFromProfile(profile: SwipeProfile) {
   if (profile.source === 'roommates') return 'Roommate to match';
@@ -62,27 +56,12 @@ function sourceLabelFromProfile(profile: SwipeProfile) {
 
 export function ProfileHeroCard({ profiles, style, onDecision }: ProfileHeroCardProps) {
   const [currentProfileIndex, setCurrentProfileIndex] = useState(0);
-  const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
-  const [photoProgress, setPhotoProgress] = useState(0);
-  // FIX: Use a single unified pause state. isHoldPaused is now tracked via ref
-  // so the pan responder never accidentally clears it via setState timing issues.
-  const [isHoldPaused, setIsHoldPaused] = useState(false);
-  const [isManualPaused, setIsManualPaused] = useState(false);
   const [isAnimatingOut, setIsAnimatingOut] = useState(false);
-  const [cardWidth, setCardWidth] = useState(0);
 
   const cardTranslateX = useRef(new Animated.Value(0)).current;
-  const holdLayoutProgress = useRef(new Animated.Value(0)).current;
 
-  // FIX: Track swiping and hold state purely via refs to avoid async setState races
   const isSwipingRef = useRef(false);
-  const isHoldPausedRef = useRef(false);
-  // FIX: Replaced the fragile controlPressActive system with a simple flag
-  // that is set synchronously and prevents the pan responder from stealing touches
-  // from the action buttons.
   const actionButtonActiveRef = useRef(false);
-
-  const isPaused = isHoldPaused || isManualPaused;
 
   const safeProfiles = profiles.length > 0 ? profiles : [];
   const profileCount = Math.max(safeProfiles.length, 1);
@@ -94,18 +73,8 @@ export function ProfileHeroCard({ profiles, style, onDecision }: ProfileHeroCard
     return currentProfile.photos.length > 0 ? currentProfile.photos : [];
   }, [currentProfile]);
 
-  const profileProgress = useMemo(() => {
-    if (photos.length === 0) return 0;
-    return Math.min((currentPhotoIndex + photoProgress) / photos.length, 1);
-  }, [currentPhotoIndex, photoProgress, photos.length]);
-
   const advanceToNextProfile = useCallback(() => {
     setCurrentProfileIndex((prev) => (safeProfiles.length === 0 ? 0 : (prev + 1) % safeProfiles.length));
-    setCurrentPhotoIndex(0);
-    setPhotoProgress(0);
-    isHoldPausedRef.current = false;
-    setIsHoldPaused(false);
-    setIsManualPaused(false);
   }, [safeProfiles.length]);
 
   const animateDecision = useCallback(
@@ -113,10 +82,7 @@ export function ProfileHeroCard({ profiles, style, onDecision }: ProfileHeroCard
       if (!currentProfile || isAnimatingOut) return;
 
       actionButtonActiveRef.current = false;
-      isHoldPausedRef.current = false;
       setIsAnimatingOut(true);
-      setIsHoldPaused(false);
-      setIsManualPaused(true);
 
       const toValue = decision === 'accept' ? 480 : -480;
       Animated.timing(cardTranslateX, {
@@ -126,11 +92,6 @@ export function ProfileHeroCard({ profiles, style, onDecision }: ProfileHeroCard
       }).start(() => {
         onDecision?.(currentProfile, decision);
         if (onDecision) {
-          setCurrentPhotoIndex(0);
-          setPhotoProgress(0);
-          isHoldPausedRef.current = false;
-          setIsHoldPaused(false);
-          setIsManualPaused(false);
           actionButtonActiveRef.current = false;
           cardTranslateX.setValue(0);
           setIsAnimatingOut(false);
@@ -147,49 +108,6 @@ export function ProfileHeroCard({ profiles, style, onDecision }: ProfileHeroCard
   );
 
   useEffect(() => {
-    Animated.timing(holdLayoutProgress, {
-      toValue: isHoldPaused ? 1 : 0,
-      duration: 180,
-      useNativeDriver: false,
-    }).start();
-  }, [holdLayoutProgress, isHoldPaused]);
-
-  useEffect(() => {
-    if (!currentProfile || photos.length === 0) return;
-    if (isPaused || isAnimatingOut) return;
-
-    const intervalId = setInterval(() => {
-      setPhotoProgress((prev) => Math.min(prev + PROGRESS_TICK_MS / PHOTO_DURATION_MS, 1));
-    }, PROGRESS_TICK_MS);
-
-    return () => clearInterval(intervalId);
-  }, [currentProfile, isAnimatingOut, isPaused, photos.length]);
-
-  useEffect(() => {
-    if (!currentProfile || photos.length === 0) return;
-    if (isPaused || isAnimatingOut) return;
-    if (photoProgress < 1) return;
-
-    if (currentPhotoIndex < photos.length - 1) {
-      setCurrentPhotoIndex((prev) => prev + 1);
-      setPhotoProgress(0);
-      return;
-    }
-
-    advanceToNextProfile();
-  }, [
-    advanceToNextProfile,
-    currentPhotoIndex,
-    currentProfile,
-    isAnimatingOut,
-    isPaused,
-    photoProgress,
-    photos.length,
-  ]);
-
-  useEffect(() => {
-    setCurrentPhotoIndex(0);
-    setPhotoProgress(0);
     actionButtonActiveRef.current = false;
   }, [currentProfile?.id]);
 
@@ -200,61 +118,16 @@ export function ProfileHeroCard({ profiles, style, onDecision }: ProfileHeroCard
     });
   }, [safeProfiles.length]);
 
-  const goToPreviousPhoto = useCallback(() => {
-    setCurrentPhotoIndex((prev) => Math.max(prev - 1, 0));
-    setPhotoProgress(0);
-  }, []);
-
-  const goToNextPhoto = useCallback(() => {
-    setCurrentPhotoIndex((prev) => Math.min(prev + 1, Math.max(photos.length - 1, 0)));
-    setPhotoProgress(0);
-  }, [photos.length]);
-
-  const handleImageTap = useCallback(
-    (event: GestureResponderEvent) => {
-      if (isAnimatingOut || photos.length <= 1) return;
-      if (isSwipingRef.current) return;
-      if (cardWidth <= 0) return;
-
-      const tapX = event.nativeEvent.locationX;
-      const tappedLeftSide = tapX < cardWidth / 2;
-
-      if (tappedLeftSide) {
-        goToPreviousPhoto();
-      } else {
-        goToNextPhoto();
-      }
-    },
-    [cardWidth, goToNextPhoto, goToPreviousPhoto, isAnimatingOut, photos.length]
-  );
-
-  // FIX: Hold pause handlers now update the ref synchronously so the pan responder
-  // can read the current value without being affected by React's async setState batching.
-  const handleHoldPressIn = useCallback(() => {
-    isHoldPausedRef.current = true;
-    setIsHoldPaused(true);
-  }, []);
-
-  const handleHoldPressOut = useCallback(() => {
-    isHoldPausedRef.current = false;
-    setIsHoldPaused(false);
-  }, []);
-
   const panResponder = useMemo(
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => false,
         onStartShouldSetPanResponderCapture: () => false,
         onPanResponderGrant: () => {
-          // FIX: Don't reset hold or action state here — grant fires alongside
-          // onPressIn, so resetting would cancel valid hold/button presses.
           isSwipingRef.current = false;
         },
         onMoveShouldSetPanResponder: (_, gestureState) => {
-          // FIX: Don't steal the gesture if an action button is being pressed.
           if (actionButtonActiveRef.current || isAnimatingOut) return false;
-          // FIX: Also don't steal if the user is holding to pause.
-          if (isHoldPausedRef.current) return false;
           const horizontalDistance = Math.abs(gestureState.dx);
           const verticalDistance = Math.abs(gestureState.dy);
           return (
@@ -264,7 +137,6 @@ export function ProfileHeroCard({ profiles, style, onDecision }: ProfileHeroCard
         onPanResponderMove: (_, gestureState) => {
           if (Math.abs(gestureState.dx) <= Math.abs(gestureState.dy) * 1.1) return;
           isSwipingRef.current = true;
-          // FIX: Don't touch hold state during a swipe move — the user is swiping, not holding.
           cardTranslateX.setValue(Math.max(-260, Math.min(260, gestureState.dx)));
         },
         onPanResponderRelease: (_, gestureState) => {
@@ -296,8 +168,6 @@ export function ProfileHeroCard({ profiles, style, onDecision }: ProfileHeroCard
         },
         onPanResponderTerminate: () => {
           actionButtonActiveRef.current = false;
-          isHoldPausedRef.current = false;
-          setIsHoldPaused(false);
           Animated.timing(cardTranslateX, {
             toValue: 0,
             duration: 130,
@@ -358,7 +228,7 @@ export function ProfileHeroCard({ profiles, style, onDecision }: ProfileHeroCard
     );
   }
 
-  const activePhoto = photos[currentPhotoIndex] ?? photos[0];
+  const activePhoto = photos[0];
   const score = currentProfile.score ?? 94;
   const sourceLabel = sourceLabelFromProfile(currentProfile);
   const nextSourceLabel = nextProfile ? sourceLabelFromProfile(nextProfile) : null;
@@ -441,27 +311,8 @@ export function ProfileHeroCard({ profiles, style, onDecision }: ProfileHeroCard
             ],
           },
         ]}>
-        <View style={styles.imageContainer} onLayout={(event) => setCardWidth(event.nativeEvent.layout.width)}>
+        <View style={styles.imageContainer}>
           <ImageBackground source={activePhoto} fadeDuration={0} style={styles.image} imageStyle={styles.imageRound}>
-            {/* FIX: mediaTouchLayer now uses the dedicated hold handlers so hold-pause
-                works correctly without interfering with the pan responder */}
-            <Pressable
-              style={styles.mediaTouchLayer}
-              onPress={handleImageTap}
-              onPressIn={handleHoldPressIn}
-              onPressOut={handleHoldPressOut}
-            />
-
-            <View style={styles.progressRow}>
-              {photos.map((_, index) => {
-                const fill = index < currentPhotoIndex ? 1 : index === currentPhotoIndex ? photoProgress : 0;
-                return (
-                  <View key={`${currentProfile.id}-bar-${index}`} style={styles.progressTrack}>
-                    <View style={[styles.progressFill, { width: `${fill * 100}%` }]} />
-                  </View>
-                );
-              })}
-            </View>
             <View style={styles.scoreBadge}>
               <MaterialCommunityIcons name="handshake-outline" size={22} color="#1B1533" />
               <Text style={styles.scoreText}>{`${score}%`}</Text>
@@ -480,24 +331,7 @@ export function ProfileHeroCard({ profiles, style, onDecision }: ProfileHeroCard
             </View>
 
             <View style={styles.bottomContent}>
-              <Animated.View
-                style={[
-                  styles.profileInfo,
-                  {
-                    marginBottom: holdLayoutProgress.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [12, 6],
-                    }),
-                    transform: [
-                      {
-                        translateY: holdLayoutProgress.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [0, 6],
-                        }),
-                      },
-                    ],
-                  },
-                ]}>
+              <View style={styles.profileInfo}>
                 <View style={styles.nameRow}>
                   <Text style={styles.nameText}>{`${currentProfile.name}, ${currentProfile.age}`}</Text>
                   {currentProfile.isVerified ? (
@@ -513,27 +347,9 @@ export function ProfileHeroCard({ profiles, style, onDecision }: ProfileHeroCard
                     </View>
                   ) : null}
                 </View>
-              </Animated.View>
+              </View>
 
-              <Animated.View
-                pointerEvents={isHoldPaused ? 'none' : 'auto'}
-                style={[
-                  styles.actionsRow,
-                  {
-                    opacity: holdLayoutProgress.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [1, 0],
-                    }),
-                    height: holdLayoutProgress.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [RING_SIZE, 0],
-                    }),
-                  },
-                ]}>
-                {/* FIX: Action buttons now use actionButtonActiveRef instead of the old
-                    controlPressActiveRef + timer system. onPressIn sets the flag so the
-                    pan responder's onMoveShouldSetPanResponder returns false, preventing
-                    it from stealing the touch. onPressOut clears it. */}
+              <View style={styles.actionsRow}>
                 <Pressable
                   onPressIn={() => { actionButtonActiveRef.current = true; }}
                   onPressOut={() => { actionButtonActiveRef.current = false; }}
@@ -550,48 +366,12 @@ export function ProfileHeroCard({ profiles, style, onDecision }: ProfileHeroCard
                   onPressOut={() => { actionButtonActiveRef.current = false; }}
                   onPress={() => {
                     actionButtonActiveRef.current = false;
-                    setIsManualPaused((prev) => !prev);
-                  }}
-                  style={[styles.actionButton, styles.pauseWrapper]}>
-                  <View pointerEvents="none" style={styles.progressRing}>
-                    {Array.from({ length: RING_SEGMENTS }).map((_, index) => {
-                      const progressAtSegment = (index + 1) / RING_SEGMENTS;
-                      const isFilled = progressAtSegment <= profileProgress;
-                      return (
-                        <View
-                          key={`ring-segment-${index}`}
-                          style={[
-                            styles.progressRingSegment,
-                            {
-                              backgroundColor: isFilled ? '#D5FF78' : 'rgba(213, 255, 120, 0.20)',
-                              transform: [
-                                { rotate: `${(360 / RING_SEGMENTS) * index}deg` },
-                                { translateY: -(RING_SIZE / 2 - 6) },
-                              ],
-                            },
-                          ]}
-                        />
-                      );
-                    })}
-                  </View>
-                  <View style={styles.pauseButton}>
-                    <View style={styles.pauseIconWrap}>
-                      <MaterialCommunityIcons name={isPaused ? 'play' : 'pause'} size={30} color="#111111" />
-                    </View>
-                  </View>
-                </Pressable>
-
-                <Pressable
-                  onPressIn={() => { actionButtonActiveRef.current = true; }}
-                  onPressOut={() => { actionButtonActiveRef.current = false; }}
-                  onPress={() => {
-                    actionButtonActiveRef.current = false;
                     animateDecision('accept');
                   }}
                   style={[styles.actionButton, styles.acceptButton]}>
                   <MaterialCommunityIcons name="handshake-outline" size={26} color="#FFFFFF" />
                 </Pressable>
-              </Animated.View>
+              </View>
             </View>
           </ImageBackground>
         </View>
@@ -676,14 +456,6 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     overflow: 'hidden',
   },
-  mediaTouchLayer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    height: '62%',
-    zIndex: 1,
-  },
   image: {
     flex: 1,
     justifyContent: 'space-between',
@@ -691,24 +463,6 @@ const styles = StyleSheet.create({
   imageRound: {
     borderRadius: 30,
     resizeMode: 'cover',
-  },
-  progressRow: {
-    marginTop: 16,
-    marginHorizontal: 14,
-    flexDirection: 'row',
-    gap: 8,
-  },
-  progressTrack: {
-    flex: 1,
-    height: 6,
-    borderRadius: 8,
-    backgroundColor: 'rgba(207, 234, 138, 0.35)',
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 8,
-    backgroundColor: '#D5FF78',
   },
   bottomGradient: {
     position: 'absolute',
@@ -772,51 +526,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 18,
-    overflow: 'hidden',
+    gap: 24,
+    marginTop: 12,
   },
   actionButton: {
     alignItems: 'center',
     justifyContent: 'center',
   },
   rejectButton: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: '#3A2286',
-  },
-  pauseButton: {
-    width: PAUSE_SIZE,
-    height: PAUSE_SIZE,
-    borderRadius: PAUSE_SIZE / 2,
-    backgroundColor: '#CFFF70',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pauseWrapper: {
-    width: RING_SIZE,
-    height: RING_SIZE,
-    borderRadius: RING_SIZE / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  progressRing: {
-    position: 'absolute',
-    width: RING_SIZE,
-    height: RING_SIZE,
-    borderRadius: RING_SIZE / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  progressRingSegment: {
-    position: 'absolute',
-    left: '50%',
-    top: '50%',
-    marginLeft: -1,
-    marginTop: -2,
-    width: 2,
-    height: 4,
-    borderRadius: 1,
   },
   scoreBadge: {
     position: 'absolute',
@@ -835,16 +556,10 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontFamily: 'Prompt-Bold',
   },
-  pauseIconWrap: {
-    width: 28,
-    height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   acceptButton: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: '#FF4C85',
   },
 });
