@@ -17,10 +17,6 @@ import { NotificationStoreProvider } from '@/context/notification-store';
 import { OnboardingProfileStoreProvider } from '@/context/onboarding-profile-store';
 import { PushNotificationProvider } from '@/context/push-notification-provider';
 
-export const unstable_settings = {
-  anchor: '(tabs)',
-};
-
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const [fontsLoaded] = useFonts({
