@@ -265,6 +265,11 @@ export async function setUserOnlineStatus(uid: string, isOnline: boolean): Promi
   );
 }
 
+export async function deleteUserProfile(uid: string): Promise<void> {
+  const profileRef = doc(db, 'users', uid);
+  await deleteDoc(profileRef);
+}
+
 export function subscribeToUserProfile(
   uid: string,
   onChange: (profile: UserProfile | null) => void,

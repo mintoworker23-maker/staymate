@@ -25,7 +25,7 @@ import { useOnboardingProfileStore } from '@/context/onboarding-profile-store';
 import { normalizeLookupKey, normalizeRadiusKm } from '@/lib/location';
 import { pickSingleImageFromLibrary } from '@/lib/media-picker';
 import { uploadProfileImages } from '@/lib/profile-images';
-import { subscribeToUserProfile, updateUserProfile } from '@/lib/user-profile';
+import { subscribeToUserProfile, updateUserProfile, deleteUserProfile } from '@/lib/user-profile';
 import type { UserProfile, UserProfileInput } from '@/types/user-profile';
 
 type ContactRowId =
@@ -360,6 +360,7 @@ export default function ProfileScreen() {
   );
   const [editorVisible, setEditorVisible] = React.useState(false);
   const [logoutPromptVisible, setLogoutPromptVisible] = React.useState(false);
+  const [deletePromptVisible, setDeletePromptVisible] = React.useState(false);
   const [editingRowId, setEditingRowId] = React.useState<ContactRowId | null>(null);
   const [editingValue, setEditingValue] = React.useState('');
   const [profileLoading, setProfileLoading] = React.useState(true);
@@ -616,6 +617,10 @@ export default function ProfileScreen() {
     setLogoutPromptVisible(true);
   }, []);
 
+  const handleDeleteProfile = React.useCallback(() => {
+    setDeletePromptVisible(true);
+  }, []);
+
   const handleOpenGuidedSetup = React.useCallback(() => {
     if (!user || !profileSnapshot) {
       Alert.alert('Profile loading', 'Please wait for your profile to load, then try again.');
@@ -757,6 +762,22 @@ export default function ProfileScreen() {
     })();
   }, [router, signOutCurrentUser]);
 
+  const confirmDeleteProfile = React.useCallback(() => {
+    if (!user) return;
+
+    void (async () => {
+      try {
+        await deleteUserProfile(user.uid);
+        await signOutCurrentUser();
+      } catch {
+        Alert.alert('Delete failed', 'Unable to delete profile right now. Please try again later.');
+      } finally {
+        setDeletePromptVisible(false);
+        router.replace('/start');
+      }
+    })();
+  }, [router, signOutCurrentUser, user]);
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.contentContainer}>
@@ -783,9 +804,14 @@ export default function ProfileScreen() {
             ) : null}
           </View>
 
-          <Pressable style={styles.logoutButton} onPress={handleLogout}>
-            <Text style={styles.logoutButtonText}>Log out</Text>
-          </Pressable>
+          <View style={styles.authActionsRow}>
+            <Pressable style={styles.logoutButton} onPress={handleLogout}>
+              <Text style={styles.logoutButtonText}>Log out</Text>
+            </Pressable>
+            <Pressable style={styles.deleteButton} onPress={handleDeleteProfile}>
+              <MaterialCommunityIcons name="delete-outline" size={22} color="#FFB8C6" />
+            </Pressable>
+          </View>
         </View>
 
         {!profileIsVerified ? (
@@ -894,6 +920,20 @@ export default function ProfileScreen() {
           },
         ]}
         onClose={() => setLogoutPromptVisible(false)}
+      />
+
+      <BrandedPromptModal
+        visible={deletePromptVisible}
+        title="Delete your profile?"
+        description="This will permanently remove your profile data from StayMate. You will be signed out."
+        actions={[
+          {
+            label: 'Delete permanently',
+            tone: 'destructive',
+            onPress: confirmDeleteProfile,
+          },
+        ]}
+        onClose={() => setDeletePromptVisible(false)}
       />
 
       <Modal transparent visible={editorVisible} animationType="fade" onRequestClose={closeEditor}>
@@ -1038,9 +1078,14 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'center',
   },
-  logoutButton: {
+  authActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     marginTop: 10,
-    width: 220,
+  },
+  logoutButton: {
+    width: 160,
     height: 52,
     borderRadius: 26,
     backgroundColor: '#D84C74',
@@ -1051,6 +1096,16 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 18,
     fontFamily: 'Prompt-SemiBold',
+  },
+  deleteButton: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(216, 76, 116, 0.15)',
+    borderWidth: 1.5,
+    borderColor: '#D84C74',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   verifyCard: {
     marginTop: 16,

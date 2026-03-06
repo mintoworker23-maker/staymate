@@ -14,11 +14,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MessageUserButton } from '@/components/message-user-button';
+import { useAuthStore } from '@/context/auth-store';
 import { useChatStore } from '@/context/chat-store';
 import { useMatchFeedStore } from '@/context/match-feed-store';
 import { matchPeople } from '@/data/people';
 import { goBackOrReplace } from '@/lib/navigation';
-import { getUserProfile } from '@/lib/user-profile';
+import { getUserProfile, subscribeToUserProfile } from '@/lib/user-profile';
 import type { UserProfile } from '@/types/user-profile';
 
 function getFirstName(fullName: string) {
@@ -35,21 +36,20 @@ const floatingDots = [
   { left: 130, top: 620, size: 9, color: 'rgba(213, 255, 120, 0.86)' },
   { left: 258, top: 704, size: 14, color: 'rgba(255, 96, 140, 0.76)' },
 ];
-const currentUser = {
-  name: 'You',
-  image: require('@/assets/images/IMG_0001_1 1.png'),
-};
 const DEFAULT_MATCH_AVATAR = require('@/assets/images/image.png');
+const DEFAULT_USER_AVATAR = require('@/assets/images/IMG_0001_1 1.png');
 
 export default function MatchCelebrationScreen() {
   const router = useRouter();
   const handleBackPress = React.useCallback(() => {
     goBackOrReplace(router, '/home');
   }, [router]);
+  const { user } = useAuthStore();
   const { upsertConversationFromMatch } = useChatStore();
   const { markMatched } = useMatchFeedStore();
   const { id } = useLocalSearchParams<{ id?: string | string[] }>();
   const [profileFromSetup, setProfileFromSetup] = React.useState<UserProfile | null>(null);
+  const [currentUserPhotoUrl, setCurrentUserPhotoUrl] = React.useState('');
   const pulse = React.useRef(new Animated.Value(0)).current;
   const entrance = React.useRef(new Animated.Value(0)).current;
   const spin = React.useRef(new Animated.Value(0)).current;
@@ -74,6 +74,24 @@ export default function MatchCelebrationScreen() {
     return fallbackPerson?.image ?? DEFAULT_MATCH_AVATAR;
   }, [fallbackPerson?.image, profileFromSetup?.photoUrls]);
   const firstName = getFirstName(personName);
+
+  const currentUserImageSource = React.useMemo<ImageSourcePropType>(() => {
+    if (currentUserPhotoUrl) {
+      return { uri: currentUserPhotoUrl };
+    }
+    return DEFAULT_USER_AVATAR;
+  }, [currentUserPhotoUrl]);
+
+  React.useEffect(() => {
+    if (!user) return;
+
+    const unsubscribe = subscribeToUserProfile(user.uid, (profile) => {
+      const firstPhoto = profile?.photoUrls.find((url) => url.trim().length > 0) ?? '';
+      setCurrentUserPhotoUrl(firstPhoto);
+    });
+
+    return unsubscribe;
+  }, [user]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -327,7 +345,7 @@ export default function MatchCelebrationScreen() {
               <Image source={personImageSource} style={styles.coinImage} />
             </View>
             <View style={[styles.coin, styles.coinRight]}>
-              <Image source={currentUser.image} style={styles.coinImage} />
+              <Image source={currentUserImageSource} style={styles.coinImage} />
             </View>
           </Animated.View>
         </View>

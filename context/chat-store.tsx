@@ -266,20 +266,36 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
       messages: [...conversation.messages],
     }))
   );
+  const [currentUserDisplayName, setCurrentUserDisplayName] = React.useState('StayMate User');
   const activeUserIdRef = React.useRef<string | null>(null);
   const conversationUnsubscribeRef = React.useRef<(() => void) | null>(null);
   const messageListenersRef = React.useRef<Map<string, () => void>>(new Map());
   const conversationsRef = React.useRef<ChatConversation[]>([]);
 
-  const currentUserDisplayName = React.useMemo(() => {
-    const fromProfile = user?.displayName?.trim();
-    if (fromProfile) return fromProfile;
+  React.useEffect(() => {
+    if (!user) {
+      setCurrentUserDisplayName('StayMate User');
+      return;
+    }
 
-    const emailPrefix = user?.email?.split('@')[0]?.trim() ?? '';
-    if (emailPrefix.length > 0) return emailPrefix;
+    const unsubscribe = onSnapshot(doc(db, 'users', user.uid), (snapshot) => {
+      const data = snapshot.data();
+      const profileName = String(data?.fullName ?? '').trim();
+      if (profileName) {
+        setCurrentUserDisplayName(profileName);
+      } else {
+        const fromProfile = user?.displayName?.trim();
+        if (fromProfile) {
+          setCurrentUserDisplayName(fromProfile);
+        } else {
+          const emailPrefix = user?.email?.split('@')[0]?.trim() ?? '';
+          setCurrentUserDisplayName(emailPrefix || 'StayMate User');
+        }
+      }
+    });
 
-    return 'StayMate User';
-  }, [user?.displayName, user?.email]);
+    return unsubscribe;
+  }, [user]);
 
   React.useEffect(() => {
     conversationsRef.current = conversations;

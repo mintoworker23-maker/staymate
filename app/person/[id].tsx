@@ -8,6 +8,7 @@ import { BrandedPromptModal } from '@/components/branded-prompt-modal';
 import { MessageUserButton } from '@/components/message-user-button';
 import { useMatchFeedStore } from '@/context/match-feed-store';
 import { useMatchRequestStore } from '@/context/match-request-store';
+import { useNotificationStore } from '@/context/notification-store';
 import { matchPeople } from '@/data/people';
 import { goBackOrReplace } from '@/lib/navigation';
 import { getUserProfile } from '@/lib/user-profile';
@@ -67,8 +68,9 @@ export default function PersonDetailScreen() {
     goBackOrReplace(router, '/home');
   }, [router]);
   const { rejectPerson } = useMatchFeedStore();
-  const { respondToIncomingRequest, sendRequest, hasOutgoingTo, hasMatchedWith } =
+  const { respondToIncomingRequest, sendRequest, hasOutgoingTo, hasMatchedWith, hasIncomingFrom } =
     useMatchRequestStore();
+  const { markNotificationsByType } = useNotificationStore();
   const { id, source } = useLocalSearchParams<{ id?: string | string[]; source?: string | string[] }>();
   const [matchRequestPromptVisible, setMatchRequestPromptVisible] = React.useState(false);
   const [matchRequestPromptTitle, setMatchRequestPromptTitle] = React.useState('Match request sent');
@@ -125,7 +127,7 @@ export default function PersonDetailScreen() {
   const personDisplayName = personAge > 0 ? `${personName}, ${personAge}` : personName;
 
   const handleMatchPress = React.useCallback(() => {
-    if (openedFromRequests && effectivePersonId) {
+    if ((openedFromRequests || hasIncomingFrom(effectivePersonId)) && effectivePersonId) {
       void (async () => {
         const accepted = await respondToIncomingRequest(effectivePersonId, 'accepted')
           .then(() => true)
@@ -138,6 +140,7 @@ export default function PersonDetailScreen() {
           return;
         }
 
+        markNotificationsByType('match-request');
         router.push(`/person/match/${effectivePersonId}`);
       })();
       return;
@@ -181,8 +184,10 @@ export default function PersonDetailScreen() {
       });
   }, [
     effectivePersonId,
+    hasIncomingFrom,
     hasMatchedWith,
     hasOutgoingTo,
+    markNotificationsByType,
     openedFromRequests,
     personName,
     respondToIncomingRequest,
@@ -191,14 +196,23 @@ export default function PersonDetailScreen() {
   ]);
 
   const handleRejectPress = React.useCallback(() => {
-    if (openedFromRequests && effectivePersonId) {
+    if ((openedFromRequests || hasIncomingFrom(effectivePersonId)) && effectivePersonId) {
       void respondToIncomingRequest(effectivePersonId, 'rejected');
+      markNotificationsByType('match-request');
     }
     if (effectivePersonId) {
       rejectPerson(effectivePersonId);
     }
     goBackOrReplace(router, '/home');
-  }, [effectivePersonId, openedFromRequests, rejectPerson, respondToIncomingRequest, router]);
+  }, [
+    effectivePersonId,
+    hasIncomingFrom,
+    markNotificationsByType,
+    openedFromRequests,
+    rejectPerson,
+    respondToIncomingRequest,
+    router,
+  ]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>

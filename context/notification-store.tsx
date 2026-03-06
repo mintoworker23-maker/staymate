@@ -19,6 +19,8 @@ type NotificationStoreValue = {
   unreadCount: number;
   markAsRead: (id: string) => void;
   markAllAsRead: () => void;
+  markNotificationsByType: (type: AppNotification['type']) => void;
+  markNotificationsByRoute: (route: string) => void;
   clearAll: () => void;
 };
 
@@ -163,6 +165,22 @@ export function NotificationStoreProvider({ children }: { children: React.ReactN
     setNotifications((previous) => previous.map((notification) => ({ ...notification, read: true })));
   }, []);
 
+  const markNotificationsByType = React.useCallback((type: AppNotification['type']) => {
+    setNotifications((previous) =>
+      previous.map((notification) =>
+        notification.type === type ? { ...notification, read: true } : notification
+      )
+    );
+  }, []);
+
+  const markNotificationsByRoute = React.useCallback((route: string) => {
+    setNotifications((previous) =>
+      previous.map((notification) =>
+        notification.route === route ? { ...notification, read: true } : notification
+      )
+    );
+  }, []);
+
   const clearAll = React.useCallback(() => {
     setNotifications([]);
   }, []);
@@ -178,9 +196,19 @@ export function NotificationStoreProvider({ children }: { children: React.ReactN
       unreadCount,
       markAsRead,
       markAllAsRead,
+      markNotificationsByType,
+      markNotificationsByRoute,
       clearAll,
     }),
-    [clearAll, markAllAsRead, markAsRead, notifications, unreadCount]
+    [
+      clearAll,
+      markAllAsRead,
+      markAsRead,
+      markNotificationsByRoute,
+      markNotificationsByType,
+      notifications,
+      unreadCount,
+    ]
   );
 
   return (

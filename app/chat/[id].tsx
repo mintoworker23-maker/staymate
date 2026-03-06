@@ -22,6 +22,7 @@ import { BrandedPromptModal } from '@/components/branded-prompt-modal';
 import { MediaReviewModal } from '@/components/media-review-modal';
 import { type ChatMessage } from '@/data/chats';
 import { useChatStore } from '@/context/chat-store';
+import { useNotificationStore } from '@/context/notification-store';
 import { pickSingleImageFromLibrary } from '@/lib/media-picker';
 import { goBackOrReplace } from '@/lib/navigation';
 import { getUserProfile } from '@/lib/user-profile';
@@ -50,6 +51,7 @@ export default function ChatDetailScreen() {
     appendMessage,
     deleteMessage,
   } = useChatStore();
+  const { markNotificationsByRoute } = useNotificationStore();
 
   const conversation = getConversationById(chatId);
   const [draft, setDraft] = React.useState('');
@@ -81,7 +83,8 @@ export default function ChatDetailScreen() {
     if (!conversation || conversation.unreadCount <= 0) return;
 
     void markConversationRead(conversation.id);
-  }, [conversation, markConversationRead]);
+    markNotificationsByRoute(`/chat/${conversation.id}`);
+  }, [conversation, markConversationRead, markNotificationsByRoute]);
 
   const sendMessage = React.useCallback(() => {
     if (!conversation) return;
