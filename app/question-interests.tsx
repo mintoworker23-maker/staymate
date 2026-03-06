@@ -4,7 +4,6 @@ import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { goBackOrReplace } from '@/lib/navigation';
 import { useOnboardingProfileStore } from '@/context/onboarding-profile-store';
 
 const QUESTION_STEPS = 7;
@@ -88,7 +87,7 @@ export default function InterestsQuestionScreen() {
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
   const fromProfile = (Array.isArray(from) ? from[0] : from) === 'profile';
   const handleBackPress = React.useCallback(() => {
-    goBackOrReplace(router, fromProfile ? '/profile' : '/start');
+    router.replace(fromProfile ? '/profile' : '/start');
   }, [fromProfile, router]);
   const { draft, setInterests } = useOnboardingProfileStore();
   const [lifestyleInterests, setLifestyleInterests] = React.useState<ChipState[]>(() =>

@@ -7,7 +7,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/context/auth-store';
 import { useOnboardingProfileStore } from '@/context/onboarding-profile-store';
 import { normalizeLookupKey } from '@/lib/location';
-import { goBackOrReplace } from '@/lib/navigation';
 import { updateUserProfile } from '@/lib/user-profile';
 
 const QUESTION_STEPS = 7;
@@ -21,7 +20,7 @@ export default function ReadyQuestionScreen() {
   const [isSaving, setIsSaving] = React.useState(false);
 
   const handleBackPress = React.useCallback(() => {
-    goBackOrReplace(router, fromProfile ? '/profile' : '/start');
+    router.replace(fromProfile ? '/profile' : '/start');
   }, [fromProfile, router]);
 
   const handleConfirm = React.useCallback(() => {
@@ -30,7 +29,7 @@ export default function ReadyQuestionScreen() {
       return;
     }
     if (!user) {
-      goBackOrReplace(router, '/start');
+      router.replace('/start');
       return;
     }
     if (isSaving) {

@@ -25,7 +25,6 @@ import {
   sanitizeLocationText,
   searchKenyanInstitutions,
 } from '@/lib/location';
-import { goBackOrReplace } from '@/lib/navigation';
 
 const QUESTION_STEPS = 7;
 const MIN_AGE = 16;
@@ -149,7 +148,7 @@ export default function BasicInfoQuestionScreen() {
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
   const fromProfile = (Array.isArray(from) ? from[0] : from) === 'profile';
   const handleBackPress = React.useCallback(() => {
-    goBackOrReplace(router, fromProfile ? '/profile' : '/start');
+    router.replace(fromProfile ? '/profile' : '/start');
   }, [fromProfile, router]);
 
   const { draft, setBasicInfo } = useOnboardingProfileStore();

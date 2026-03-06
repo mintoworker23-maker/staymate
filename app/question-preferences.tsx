@@ -12,7 +12,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useOnboardingProfileStore } from '@/context/onboarding-profile-store';
-import { goBackOrReplace } from '@/lib/navigation';
 import {
   type AccommodationType,
   type BudgetRange,
@@ -178,7 +177,7 @@ export default function PreferencesQuestionScreen() {
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
   const fromProfile = (Array.isArray(from) ? from[0] : from) === 'profile';
   const handleBackPress = React.useCallback(() => {
-    goBackOrReplace(router, fromProfile ? '/profile' : '/start');
+    router.replace(fromProfile ? '/profile' : '/start');
   }, [fromProfile, router]);
   const { draft, setPreferences } = useOnboardingProfileStore();
   const [accommodation, setAccommodation] = React.useState<AccommodationType>(draft.accommodation);

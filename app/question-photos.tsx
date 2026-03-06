@@ -1,5 +1,4 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -8,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MediaReviewModal } from '@/components/media-review-modal';
 import { useAuthStore } from '@/context/auth-store';
 import { useOnboardingProfileStore } from '@/context/onboarding-profile-store';
-import { goBackOrReplace } from '@/lib/navigation';
+import { pickSingleImageFromLibrary } from '@/lib/media-picker';
 import { uploadProfileImages } from '@/lib/profile-images';
 import { updateUserProfile } from '@/lib/user-profile';
 import type { UserProfileInput } from '@/types/user-profile';
@@ -65,7 +64,7 @@ function buildEmptySlots() {
 export default function PhotoSetupQuestionScreen() {
   const router = useRouter();
   const handleBackPress = React.useCallback(() => {
-    goBackOrReplace(router, '/start');
+    router.replace('/start');
   }, [router]);
   const { user } = useAuthStore();
   const { draft, resetDraft } = useOnboardingProfileStore();
@@ -81,30 +80,12 @@ export default function PhotoSetupQuestionScreen() {
   );
 
   const pickImageAt = React.useCallback(async (slotIndex: number) => {
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: false,
-        quality: 0.9,
-      });
+    const selectedUri = await pickSingleImageFromLibrary({ quality: 0.9, allowsEditing: false });
+    if (!selectedUri) return;
 
-      if (result.canceled || !result.assets?.length) return;
-
-      const selected = result.assets[0];
-      setReviewingSlotIndex(slotIndex);
-      setReviewingImageUri(selected.uri);
-      if (errorMessage) setErrorMessage(null);
-    } catch (error) {
-      const detail = error instanceof Error ? error.message.toLowerCase() : '';
-      if (detail.includes('permission') || detail.includes('denied')) {
-        Alert.alert(
-          'Permission needed',
-          'Allow photo access in phone settings, then try selecting an image again.'
-        );
-        return;
-      }
-      Alert.alert('Gallery unavailable', 'Unable to open your gallery right now. Please try again.');
-    }
+    setReviewingSlotIndex(slotIndex);
+    setReviewingImageUri(selectedUri);
+    if (errorMessage) setErrorMessage(null);
   }, [errorMessage]);
 
   const removeImageAt = React.useCallback((slotIndex: number) => {

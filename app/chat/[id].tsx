@@ -1,6 +1,5 @@
 import React from 'react';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Alert,
@@ -23,6 +22,7 @@ import { BrandedPromptModal } from '@/components/branded-prompt-modal';
 import { MediaReviewModal } from '@/components/media-review-modal';
 import { type ChatMessage } from '@/data/chats';
 import { useChatStore } from '@/context/chat-store';
+import { pickSingleImageFromLibrary } from '@/lib/media-picker';
 import { goBackOrReplace } from '@/lib/navigation';
 import { getUserProfile } from '@/lib/user-profile';
 
@@ -102,28 +102,9 @@ export default function ChatDetailScreen() {
   }, [appendMessage, conversation, draft]);
 
   const pickImageAttachment = React.useCallback(async () => {
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: false,
-        quality: 0.85,
-      });
-
-      if (result.canceled || !result.assets?.length) return;
-
-      const selected = result.assets[0];
-      setReviewingAttachmentUri(selected.uri);
-    } catch (error) {
-      const detail = error instanceof Error ? error.message.toLowerCase() : '';
-      if (detail.includes('permission') || detail.includes('denied')) {
-        Alert.alert(
-          'Permission needed',
-          'Allow photo access in phone settings, then try attaching an image again.'
-        );
-        return;
-      }
-      Alert.alert('Gallery unavailable', 'Unable to open your gallery right now. Please try again.');
-    }
+    const selectedUri = await pickSingleImageFromLibrary({ quality: 0.85, allowsEditing: false });
+    if (!selectedUri) return;
+    setReviewingAttachmentUri(selectedUri);
   }, []);
 
   const confirmImageAttachment = React.useCallback(() => {

@@ -1,5 +1,4 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { sendEmailVerification } from 'firebase/auth';
 import React from 'react';
@@ -24,6 +23,7 @@ import { MediaReviewModal } from '@/components/media-review-modal';
 import { useAuthStore } from '@/context/auth-store';
 import { useOnboardingProfileStore } from '@/context/onboarding-profile-store';
 import { normalizeLookupKey, normalizeRadiusKm } from '@/lib/location';
+import { pickSingleImageFromLibrary } from '@/lib/media-picker';
 import { uploadProfileImages } from '@/lib/profile-images';
 import { subscribeToUserProfile, updateUserProfile } from '@/lib/user-profile';
 import type { UserProfile, UserProfileInput } from '@/types/user-profile';
@@ -444,29 +444,11 @@ export default function ProfileScreen() {
     }
     if (photoSaving) return;
 
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: false,
-        quality: 0.9,
-      });
+    const selectedUri = await pickSingleImageFromLibrary({ quality: 0.9, allowsEditing: false });
+    if (!selectedUri) return;
 
-      if (result.canceled || !result.assets?.length) return;
-
-      const selected = result.assets[0];
-      setReviewingSlotIndex(slotIndex);
-      setReviewingImageUri(selected.uri);
-    } catch (error) {
-      const detail = error instanceof Error ? error.message.toLowerCase() : '';
-      if (detail.includes('permission') || detail.includes('denied')) {
-        Alert.alert(
-          'Permission needed',
-          'Allow photo access in phone settings, then try selecting an image again.'
-        );
-        return;
-      }
-      Alert.alert('Gallery unavailable', 'Unable to open your gallery right now. Please try again.');
-    }
+    setReviewingSlotIndex(slotIndex);
+    setReviewingImageUri(selectedUri);
   }, [photoSaving, user]);
 
   const uploadReviewedImageAt = React.useCallback(async (slotIndex: number, localUri: string) => {

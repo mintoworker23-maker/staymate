@@ -5,7 +5,6 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useOnboardingProfileStore } from '@/context/onboarding-profile-store';
-import { goBackOrReplace } from '@/lib/navigation';
 import type { RoommateAccommodationPreference } from '@/types/user-profile';
 
 const QUESTION_STEPS = 7;
@@ -29,7 +28,7 @@ export default function PersonalityQuestionScreen() {
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
   const fromProfile = (Array.isArray(from) ? from[0] : from) === 'profile';
   const handleBackPress = React.useCallback(() => {
-    goBackOrReplace(router, fromProfile ? '/profile' : '/start');
+    router.replace(fromProfile ? '/profile' : '/start');
   }, [fromProfile, router]);
   const { draft, setRoommateAccommodationPreference, setHasAccommodation } = useOnboardingProfileStore();
   const [selectedStatus, setSelectedStatus] = React.useState<AccommodationStatus | null>(
